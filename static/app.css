@@ -129,6 +129,10 @@ tr:nth-child(even) { background: #efe5d957; }
 tr:hover td { background: #ebd9c946; }
 .numeric { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .row-actions { white-space: nowrap; }
+.article-actions { display: grid; justify-items: start; width: max-content; }
+@media (pointer: fine) {
+  .article-actions .button { min-height: 32px; padding-block: 4px; }
+}
 .code { font-family: ui-monospace,monospace; font-size: 12px; color: var(--muted); }
 .stock { display: inline-block; padding: 4px 8px; border-radius: 999px; background: #dce9df; color: var(--success); font-weight: 650; }
 .stock.zero { background: #f1e2d0; color: var(--warning); }

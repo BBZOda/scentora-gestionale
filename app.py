@@ -19,7 +19,7 @@ DEMO = os.getenv("SCENTORA_DEMO") == "1"
 DB = os.getenv("SCENTORA_DB", str(ROOT / "scentora.sqlite"))
 SESSION_SECONDS = 12 * 3600
 PASSWORD_MIN = 5
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 SCALE = 1_000_000
 CENT = SCALE // 100
 MAX_VALUE = 1_000_000_000 * SCALE
@@ -109,7 +109,10 @@ def migrate_schema(db):
         return
     if version < 1:
         migrate_accounting(db)
-    db.execute("ALTER TABLE articles ADD COLUMN scentora_perfume_id INTEGER REFERENCES perfumes(id)")
+    if version < 2:
+        db.execute("ALTER TABLE articles ADD COLUMN scentora_perfume_id INTEGER REFERENCES perfumes(id)")
+    if version < 3:
+        db.execute("ALTER TABLE articles ADD COLUMN supplier_id INTEGER REFERENCES contacts(id)")
     db.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
 
@@ -261,6 +264,12 @@ def save_article(db, data):
             perfume_id = integer(perfume_id)
             get_row(db, "SELECT id FROM perfumes WHERE id=?", (perfume_id,))
         fields["scentora_perfume_id"] = perfume_id
+    if "supplier_id" in data:
+        supplier_id = data["supplier_id"]
+        if supplier_id is not None:
+            supplier_id = integer(supplier_id)
+            get_row(db, "SELECT id FROM contacts WHERE id=? AND kind='supplier'", (supplier_id,))
+        fields["supplier_id"] = supplier_id
     replace_record(db, "articles", data.get("id"), fields)
 
 
