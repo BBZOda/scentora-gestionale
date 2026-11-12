@@ -134,6 +134,17 @@ tr:hover td { background: #ebd9c946; }
 .numeric { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .row-actions { white-space: nowrap; }
 .article-actions { display: grid; justify-items: start; width: max-content; }
+.article-edit-actions { display: flex; align-items: center; gap: 4px; }
+.button.article-delete { background: #f2d3c8; color: var(--error); border-color: #d3a093; }
+.button.article-delete:hover { background: #edbdb0; }
+.article-edit-actions .article-delete { padding-inline: 8px; }
+.dialog-actions .delete-start { margin-right: auto; }
+.button.delete-confirm { background: var(--error); color: #fff7f3; border-color: var(--error); }
+.button.delete-confirm:hover { background: #68231f; }
+dialog:has(form[data-form="delete-article"]) { width: min(510px,calc(100% - 24px)); }
+.delete-summary { display: grid; gap: 4px; background: #f4e4dc; border-left: 3px solid #b96a59; border-radius: var(--radius); padding: 12px 14px; overflow-wrap: anywhere; }
+.delete-summary small { color: var(--muted); }
+.delete-summary + p { margin-top: 12px; }
 @media (pointer: fine) {
   .article-actions .button { min-height: 32px; padding-block: 4px; }
 }

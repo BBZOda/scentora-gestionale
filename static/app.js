@@ -217,7 +217,8 @@ function table(key, items) {
           + cell("Unità",escape(unit(item.unit))) + cell("Costo unitario",euro(item.cost),"numeric")
           + cell("Giacenza",`<span class="stock ${item.stock ? "" : "zero"}">${format(item.stock)}</span>`,"numeric")
           + cell("Azioni",`<div class="article-actions">${button("Movimenta",`stock:${item.id}`,"inline")}
-            ${button("Modifica",`article:${item.id}`,"inline")}</div>`)
+            <div class="article-edit-actions">${button("Modifica",`article:${item.id}`,"inline")}
+              ${button("Elimina",`article:${item.id}`,"article-delete")}</div></div>`)
           + cell("Fornitore",escape(state.suppliers.find(supplier => supplier.id === item.supplier_id)?.name));
       case "perfumes":
         return cell("Profumo",`<strong>${name}</strong>`) + cell("Unità",escape(unit(item.unit)))
@@ -370,13 +371,36 @@ function modal(action,id) {
   dialog.innerHTML = `<div class="dialog-heading"><h2 id="dialog-title">${title}</h2><button class="icon-button" data-action="close" aria-label="Chiudi">${icon("close")}</button></div>
     <form data-form="${action}" data-id="${id || ""}">
       <div class="dialog-content">${fields}<p class="form-error" role="alert" hidden></p></div>
-      <div class="dialog-actions">${button("Annulla","close")}<button class="button primary" type="submit">${label}</button></div>
+      <div class="dialog-actions">${action === "article" && item
+        ? button("Elimina",`confirm-article-delete:${item.id}`,"article-delete delete-start") : ""}
+        ${button("Annulla","close")}<button class="button primary" type="submit">${label}</button></div>
     </form>`;
   if (action === "receipt" || action === "purchase" || action === "unload") {
     dialog.querySelector("form").dataset.requestKey = crypto.randomUUID();
   }
   dialog.showModal();
   updatePreview();
+}
+
+function confirmArticleDelete(id) {
+  const item = article(id);
+  if (!item) return;
+  dialog.innerHTML = `<div class="dialog-heading"><h2 id="dialog-title">Eliminare l’articolo?</h2>
+    <button class="icon-button" data-action="close" aria-label="Chiudi">${icon("close")}</button></div>
+    <form data-form="delete-article" data-id="${id}">
+      <div class="dialog-content">
+        <div class="delete-summary"><strong>${escape(item.name)}</strong>
+          ${item.code ? `<small>Codice ${escape(item.code)}</small>` : ""}
+          <small>Giacenza ${format(item.stock)} ${escape(unit(item.unit))}</small></div>
+        <p>L’articolo verrà rimosso dall’archivio operativo. Gli acquisti già registrati resteranno nello storico.</p>
+        <p class="form-error" role="alert" hidden></p>
+      </div>
+      <div class="dialog-actions">
+        ${button("Annulla",`article:${id}`)}
+        <button class="button article-delete delete-confirm" type="submit">Conferma eliminazione</button>
+      </div>
+    </form>`;
+  dialog.querySelector(`[data-action="article:${id}"]`).focus();
 }
 
 function updatePreview() {
@@ -496,6 +520,7 @@ document.addEventListener("submit", async event => {
     const messages = {
       produce: "Carico registrato e magazzino aggiornato.",
       unload: "Scarico registrato e giacenza aggiornata.",
+      "delete-article": "Articolo eliminato.",
     };
     if (action !== "login") notify(messages[action] || "Modifiche salvate.");
   } catch (error) {
@@ -538,6 +563,7 @@ document.addEventListener("click", async event => {
     try { await request("logout",{}); renderLogin(); }
     catch (error) { notify(error.message); }
   } else if (action === "ledger") await openLedger(Number(id));
+  else if (action === "confirm-article-delete") confirmArticleDelete(Number(id));
   else modal(action,Number(id));
 });
 

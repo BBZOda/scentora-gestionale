@@ -19,7 +19,7 @@ DEMO = os.getenv("SCENTORA_DEMO") == "1"
 DB = os.getenv("SCENTORA_DB", str(ROOT / "scentora.sqlite"))
 SESSION_SECONDS = 12 * 3600
 PASSWORD_MIN = 5
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 SCALE = 1_000_000
 CENT = SCALE // 100
 MAX_VALUE = 1_000_000_000 * SCALE
@@ -132,6 +132,8 @@ def migrate_schema(db):
         db.execute("ALTER TABLE movements ADD COLUMN notes TEXT NOT NULL DEFAULT ''")
         db.execute("ALTER TABLE movements ADD COLUMN request_key TEXT")
         db.execute("CREATE UNIQUE INDEX movements_request_key ON movements(request_key)")
+    if version < 7:
+        db.execute("ALTER TABLE articles ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK(archived IN (0,1))")
     db.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
 
@@ -257,7 +259,7 @@ def state(db, user):
     return {
         "user": dict(user),
         "demo": DEMO,
-        "articles": rows(db, "SELECT * FROM articles ORDER BY name COLLATE NOCASE"),
+        "articles": rows(db, "SELECT * FROM articles WHERE archived=0 ORDER BY name COLLATE NOCASE"),
         "units": rows(db, "SELECT * FROM units ORDER BY name COLLATE NOCASE"),
         "perfumes": rows(db, "SELECT * FROM perfumes ORDER BY name COLLATE NOCASE"),
         "recipes": rows(db, "SELECT * FROM recipes ORDER BY perfume,article"),
@@ -280,7 +282,7 @@ def save_article(db, data):
     check_unit(db, unit, stock)
     if data.get("id") is not None:
         article_id = integer(data["id"])
-        article = get_row(db, "SELECT unit,stock FROM articles WHERE id=?", (article_id,))
+        article = get_row(db, "SELECT unit,stock FROM articles WHERE id=? AND archived=0", (article_id,))
         if article["unit"] != unit and (article["stock"] or db.execute(
                 "SELECT 1 FROM recipes WHERE article=?", (article_id,)).fetchone()):
             raise Problem("L’unità è già utilizzata. Crea un nuovo articolo per usare un’altra unità.")
@@ -308,9 +310,22 @@ def save_article(db, data):
     replace_record(db, "articles", data.get("id"), fields)
 
 
+def delete_article(db, data):
+    article_id = integer(data.get("id"))
+    article = get_row(db, "SELECT archived FROM articles WHERE id=?", (article_id,))
+    if article["archived"]:
+        return
+    perfumes = rows(db, """SELECT p.name FROM recipes r JOIN perfumes p ON p.id=r.perfume
+                            WHERE r.article=? ORDER BY p.name""", (article_id,))
+    if perfumes:
+        names = ", ".join(item["name"] for item in perfumes)
+        raise Problem(f"Rimuovi prima l’articolo dalle distinte base di: {names}.", "409 Conflict")
+    db.execute("UPDATE articles SET archived=1 WHERE id=?", (article_id,))
+
+
 def adjust_stock(db, data):
     article_id = integer(data.get("id"))
-    article = get_row(db, "SELECT * FROM articles WHERE id=?", (article_id,))
+    article = get_row(db, "SELECT * FROM articles WHERE id=? AND archived=0", (article_id,))
     quantity = amount(data.get("amount"), positive=True)
     if data.get("direction") not in {"in", "out"}:
         raise Problem("Seleziona carico o scarico.")
@@ -337,7 +352,7 @@ def save_perfume(db, data):
         if not isinstance(line, dict):
             raise Problem("Controlla le righe della distinta base.")
         article_id = integer(line.get("article"))
-        article = get_row(db, "SELECT unit FROM articles WHERE id=?", (article_id,))
+        article = get_row(db, "SELECT unit FROM articles WHERE id=? AND archived=0", (article_id,))
         quantity = amount(line.get("amount"), positive=True)
         check_unit(db, article["unit"], quantity)
         if article_id in lines:
@@ -465,7 +480,7 @@ def record_accounting(db, data, kind):
     else:
         article_id = integer(data.get("article"))
         article = get_row(db, """SELECT a.code,a.name,a.cost,a.unit,u.name AS unit_name FROM articles a
-                                 JOIN units u ON u.id=a.unit WHERE a.id=?""", (article_id,))
+                                 JOIN units u ON u.id=a.unit WHERE a.id=? AND a.archived=0""", (article_id,))
         description = f"{article['code']} · {article['name']}" if article["code"] else article["name"]
         unit = article["unit_name"]
         unit_cost = article["cost"]
@@ -587,6 +602,8 @@ def api(env, path, method):
             headers.append(cookie("scentora", "", 0))
         elif action == "article":
             save_article(db, data)
+        elif action == "delete-article":
+            delete_article(db, data)
         elif action == "stock":
             adjust_stock(db, data)
         elif action == "perfume":
@@ -732,7 +749,7 @@ def apply_article_bulk_update(path):
         supplier_id = contact["id"] if contact else db.execute(
             "INSERT INTO contacts(kind,name,address,city,phone) VALUES ('supplier',?,'','','')",
             (supplier,)).lastrowid
-        count = db.execute("UPDATE articles SET cost=?, supplier_id=?", (cost, supplier_id)).rowcount
+        count = db.execute("UPDATE articles SET cost=?, supplier_id=? WHERE archived=0", (cost, supplier_id)).rowcount
         db.execute("INSERT INTO article_bulk_updates VALUES (?)", (batch,))
     print(f"Aggiornamento articoli {batch}: {count} articoli impostati.", flush=True)
 
