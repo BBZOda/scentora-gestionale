@@ -196,7 +196,7 @@ function table(key, items) {
       <span>${query ? "Prova un altro termine di ricerca." : messages[key]}</span></div>`;
   }
   const headings = {
-    articles:["Codice","Descrizione Equivalenza","Profumo Scentora","Unità","Costo unitario","Giacenza","Azioni","Fornitore"],
+    articles:["Codice","Descrizione Articolo","Profumo Scentora","Unità","Costo unitario","Giacenza","Azioni","Fornitore"],
     perfumes:["Profumo","Unità","Costo distinta","Prezzo vendita","Giacenza","Azioni"],
     movements:["Profumo","Data e ora","Operatore","Quantità"],
     customers:["Nome","Indirizzo","Città","Telefono","Contabile","Azioni"],
@@ -211,7 +211,7 @@ function table(key, items) {
     switch (key) {
       case "articles":
         return cell("Codice",`<span class="code">${escape(item.code)}</span>`)
-          + cell("Descrizione Equivalenza",`<strong>${name}</strong>`)
+          + cell("Descrizione Articolo",`<strong>${name}</strong>`)
           + cell("Profumo Scentora",escape(state.perfumes.find(perfume => perfume.id === item.scentora_perfume_id)?.name))
           + cell("Unità",escape(unit(item.unit))) + cell("Costo unitario",euro(item.cost),"numeric")
           + cell("Giacenza",`<span class="stock ${item.stock ? "" : "zero"}">${format(item.stock)}</span>`,"numeric")
@@ -281,7 +281,7 @@ function modal(action,id) {
     case "article":
       title = item ? "Modifica articolo" : "Nuovo articolo di base";
       fields = `<div class="form-grid">${input("Codice","codice",item?.code,'required maxlength="40"')}
-        ${input("Descrizione Equivalenza","descrizione",item?.name,'required maxlength="120"')}
+        ${input("Descrizione Articolo","descrizione",item?.name,'required maxlength="120"')}
         ${select("Profumo Scentora","scentora_perfume_id",options(state.perfumes,item?.scentora_perfume_id),false)}
         ${select("Fornitore","supplier_id",options(state.suppliers,item?.supplier_id),false)}
         ${units(item?.unit)}
