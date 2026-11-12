@@ -425,8 +425,40 @@ def application(env, start_response):
     return [body]
 
 
+def import_articles(path):
+    payload = os.getenv("SCENTORA_ARTICLE_IMPORT")
+    if not payload:
+        return
+    articles = json.loads(payload)
+    if not isinstance(articles, list) or not articles:
+        raise RuntimeError("Importazione articoli: elenco non valido.")
+    batch = hashlib.sha256(payload.encode()).hexdigest()
+    with closing(connect(path)) as db, db:
+        db.execute("BEGIN IMMEDIATE")
+        db.execute("CREATE TABLE IF NOT EXISTS article_imports (batch TEXT PRIMARY KEY)")
+        if db.execute("SELECT 1 FROM article_imports WHERE batch=?", (batch,)).fetchone():
+            return
+        inserted = 0
+        for item in articles:
+            code = field(item, "code", 40)
+            name = field(item, "name")
+            unit_name = field(item, "unit", 24)
+            unit = get_row(db, "SELECT id FROM units WHERE name=?", (unit_name,))["id"]
+            cost = amount(item["cost"] if item["cost"] is not None else 0)
+            stock = amount(item["stock"] if item["stock"] is not None else 0)
+            check_unit(db, unit, stock)
+            inserted += db.execute(
+                """INSERT INTO articles(code,name,unit,cost,stock) VALUES (?,?,?,?,?)
+                   ON CONFLICT(code) DO NOTHING""", (code, name, unit, cost, stock)
+            ).rowcount
+        db.execute("INSERT INTO article_imports VALUES (?)", (batch,))
+    print(f"Importazione articoli completata: {inserted} inseriti, "
+          f"{len(articles)-inserted} già presenti.", flush=True)
+
+
 if not DEMO:
     initialize(DB)
+    import_articles(DB)
 
 if __name__ == "__main__":
     with make_server("0.0.0.0", int(os.getenv("PORT", "8000")), application) as server:
