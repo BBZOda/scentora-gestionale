@@ -33,7 +33,7 @@ svg { display: block; width: 20px; height: 20px; flex: none; }
 .skip { position: fixed; top: 8px; left: 8px; z-index: 5; transform: translateY(-150%); background: var(--cream); color: var(--ink); padding: 12px; border-radius: var(--radius); }
 .skip:focus { transform: none; }
 .shell { display: grid; grid-template-columns: 234px minmax(0,1fr); max-width: 1800px; min-height: 100vh; margin: auto; }
-.sidebar { position: sticky; top: 0; height: 100dvh; display: flex; flex-direction: column; gap: 40px; padding: 26px 16px 16px; background: var(--glass); border-right: 1px solid var(--edge); z-index: 3; }
+.sidebar { position: sticky; top: 0; height: 100dvh; display: flex; flex-direction: column; gap: 40px; padding: 26px 16px 16px; background: var(--glass); border-right: 1px solid var(--edge); z-index: 3; overflow-y: auto; }
 .brand { display: flex; align-items: center; gap: 10px; padding: 0 6px; }
 .brand svg { width: 39px; height: 39px; color: var(--accent); }
 .brand span { font-family: var(--display); font-size: 21px; letter-spacing: .14em; }

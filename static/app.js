@@ -8,6 +8,8 @@ const sections = {
   articles: ["Articoli di base", "box"],
   perfumes: ["Profumi", "bottle"],
   movements: ["Produzione", "clock"],
+  customers: ["Clienti", "users"],
+  suppliers: ["Fornitori", "box"],
   units: ["Elenchi", "list"],
   users: ["Utenti", "users"],
 };
@@ -142,6 +144,8 @@ const settings = {
   articles: ["Gestisci codici, costi e disponibilità di magazzino.", "Nuovo articolo", "article", "Cerca per codice o descrizione"],
   perfumes: ["Consulta il catalogo e configura le distinte base.", "Nuovo profumo", "perfume", "Cerca un profumo"],
   movements: ["Consulta gli ultimi 100 carichi di produzione.", "Carica profumo", "produce", "Cerca per profumo o operatore"],
+  customers: ["Consulta le anagrafiche e i movimenti di incasso.", "Nuovo cliente", "customer", "Cerca per nome, città o telefono"],
+  suppliers: ["Consulta le anagrafiche e i movimenti di spesa.", "Nuovo fornitore", "supplier", "Cerca per nome, città, nazione o telefono"],
   units: ["Unità di misura disponibili nelle schede.", "Nuova unità", "unit", "Cerca un’unità"],
   users: ["Gestisci gli account e i ruoli di accesso.", "Nuovo utente", "user", "Cerca un utente"],
 };
@@ -157,7 +161,7 @@ function listing(key) {
 }
 
 function filtered(key) {
-  return state[key].filter(item => [item.name,item.code,item.actor].some(value =>
+  return state[key].filter(item => [item.name,item.code,item.actor,item.city,item.country,item.phone].some(value =>
     String(value ?? "").toLocaleLowerCase("it").includes(query.trim().toLocaleLowerCase("it"))));
 }
 
@@ -165,7 +169,8 @@ const cell = (label,value,style = "") => `<td data-label="${label}" class="${sty
 function table(key, items) {
   if (!items.length) {
     const messages = {articles:"Aggiungi il primo articolo di base.", perfumes:"Crea un profumo con la sua distinta base.",
-      movements:"I carichi confermati compariranno qui.", units:"Aggiungi un’unità di misura.", users:"Crea il primo utente."};
+      movements:"I carichi confermati compariranno qui.", units:"Aggiungi un’unità di misura.", users:"Crea il primo utente.",
+      customers:"Aggiungi il primo cliente.", suppliers:"Aggiungi il primo fornitore."};
     return `<div class="empty"><span class="metric-icon">${icon(sections[key][1])}</span><strong>${query ? "Nessun risultato" : "Nessuna voce da mostrare"}</strong>
       <span>${query ? "Prova un altro termine di ricerca." : messages[key]}</span></div>`;
   }
@@ -173,6 +178,8 @@ function table(key, items) {
     articles:["Codice","Descrizione","Unità","Costo unitario","Giacenza","Azioni"],
     perfumes:["Profumo","Unità","Costo distinta","Prezzo vendita","Giacenza","Azioni"],
     movements:["Profumo","Data e ora","Operatore","Quantità"],
+    customers:["Nome","Indirizzo","Città","Telefono","Contabile","Azioni"],
+    suppliers:["Nome","Indirizzo","Città","Nazione","Telefono","Contabile","Azioni"],
     units:["Unità di misura"],
     users:["Utente","Ruolo","Stato","Azioni"],
   }[key];
@@ -194,6 +201,13 @@ function table(key, items) {
           + cell("Operatore",escape(item.actor)) + cell("Quantità",format(item.amount),"numeric");
       case "units":
         return cell("Unità di misura",`<strong>${name}</strong>`);
+      case "customers":
+      case "suppliers":
+        return cell("Nome",`<strong>${name}</strong>`) + cell("Indirizzo",escape(item.address))
+          + cell("Città",escape(item.city)) + (key === "suppliers" ? cell("Nazione",escape(item.country)) : "")
+          + cell("Telefono",escape(item.phone))
+          + cell("Contabile",button("Contabile",`ledger:${item.id}`,"inline"))
+          + cell("Azioni",button("Modifica",`${item.kind}:${item.id}`,"inline"),"row-actions");
       default:
         return cell("Utente",`<strong>${name}</strong>`) + cell("Ruolo",item.role === "admin" ? "Amministratore" : "Operatore")
           + cell("Stato",`<span class="stock ${item.active ? "" : "zero"}">${item.active ? "Attivo" : "Disattivato"}</span>`)
@@ -222,7 +236,7 @@ function recipeLine(line = {}) {
 function modal(action,id) {
   const item = id ? ({
     article:state.articles, stock:state.articles, perfume:state.perfumes,
-    produce:state.perfumes, user:state.users,
+    produce:state.perfumes, user:state.users, customer:state.customers, supplier:state.suppliers,
   }[action] || []).find(record => record.id === id) : undefined;
   let title, fields, label = "Salva";
   switch (action) {
@@ -259,11 +273,21 @@ function modal(action,id) {
       title = "Nuova unità di misura";
       fields = input("Unità di misura","unità","","required maxlength=24");
       break;
+    case "customer":
+    case "supplier":
+      title = action === "customer" ? (item ? "Modifica cliente" : "Nuovo cliente")
+        : (item ? "Modifica fornitore" : "Nuovo fornitore");
+      fields = `<div class="form-grid">${input("Nome","nome",item?.name,'required maxlength="120"')}
+        ${input("Indirizzo","indirizzo",item?.address,'maxlength="200"')}
+        ${input("Città","città",item?.city,'maxlength="100"')}
+        ${action === "supplier" ? input("Nazione","nazione",item?.country,'maxlength="100"') : ""}
+        ${input("Telefono","telefono",item?.phone,'type="tel" maxlength="48"')}</div>`;
+      break;
     case "user":
       title = item ? "Modifica utente" : "Nuovo utente";
       fields = `<div class="form-grid">${input("Utente","utente",item?.name,'required maxlength="120"')}
         ${select("Ruolo","role",`<option value="operator" ${selected(item?.role,"operator")}>Operatore</option><option value="admin" ${selected(item?.role,"admin")}>Amministratore</option>`)}
-        ${input(item ? "Nuova password (facoltativa)" : "Password","password","",`type="password" autocomplete="new-password" minlength="12" maxlength="256" ${item ? "" : "required"}`)}
+        ${input(item ? "Nuova password (facoltativa)" : "Password","password","",`type="password" autocomplete="new-password" minlength="5" maxlength="256" ${item ? "" : "required"}`)}
         ${select("Stato","active",`<option value="true">Attivo</option><option value="false" ${item?.active === 0 ? "selected" : ""}>Disattivato</option>`)}</div>`;
       break;
   }
@@ -301,10 +325,41 @@ function formData(form) {
   if (data.unit) data.unit = Number(data.unit);
   if (action === "produce") data.id = Number(data.perfume);
   if (action === "user") data.active = data.active === "true";
+  if (action === "customer" || action === "supplier") data.kind = action;
   if (action === "perfume") data.recipe = [...form.querySelectorAll(".recipe-line")].map(line => ({
     article: Number(line.querySelector("select").value), amount: line.querySelector("input").value,
   }));
   return data;
+}
+
+async function openLedger(id) {
+  const contact = [...state.customers, ...state.suppliers].find(item => item.id === id);
+  if (!contact) return;
+  const category = contact.kind === "customer" ? "Incassi" : "Spese";
+  dialog.innerHTML = `<div class="dialog-heading"><h2 id="dialog-title">Contabile · ${escape(contact.name)}</h2>
+    <button class="icon-button" data-action="close" aria-label="Chiudi">${icon("close")}</button></div>
+    <div class="dialog-content" id="ledger-content"><p role="status">Caricamento movimenti…</p></div>
+    <div class="dialog-actions">${button("Chiudi","close")}</div>`;
+  const content = dialog.querySelector("#ledger-content");
+  dialog.showModal();
+  try {
+    const {movements} = await request(`contacts/${id}/ledger`);
+    if (!dialog.open || !content.isConnected) return;
+    content.innerHTML = movements.length ? `<div class="table-wrap" tabindex="0" role="region" aria-label="${category}">
+      <table><thead><tr><th scope="col">Data</th><th scope="col">Descrizione</th><th scope="col">Importo</th></tr></thead>
+      <tbody>${movements.map(item => `<tr>${cell("Data",escape(item.occurred_on.split("-").reverse().join("/")))}
+        ${cell("Descrizione",escape(item.description))}${cell("Importo",euro(item.amount),"numeric")}</tr>`).join("")}</tbody></table></div>`
+      : `<p><strong>Nessun movimento registrato.</strong></p><p>Qui compariranno i movimenti della sezione ${category} in Gestione Contabilità.</p>`;
+  } catch (error) {
+    if (!dialog.open || !content.isConnected) return;
+    if (error.status === 401) {
+      dialog.close();
+      renderLogin();
+      notify("Sessione scaduta. Accedi nuovamente.");
+      return;
+    }
+    content.innerHTML = `<p class="form-error" role="alert">${escape(error.message)}</p>`;
+  }
 }
 
 document.addEventListener("submit", async event => {
@@ -319,7 +374,8 @@ document.addEventListener("submit", async event => {
   submit.textContent = action === "login" ? "Accesso in corso…" : "Salvataggio…";
   errorBox.hidden = true;
   try {
-    await request(action, formData(form));
+    const data = formData(form);
+    await request(data.kind ? "contact" : action, data);
     if (dialog.open) dialog.close();
     await refresh();
     if (action !== "login") notify(action === "produce" ? "Carico registrato e magazzino aggiornato." : "Modifiche salvate.");
@@ -362,7 +418,8 @@ document.addEventListener("click", async event => {
   else if (action === "logout") {
     try { await request("logout",{}); renderLogin(); }
     catch (error) { notify(error.message); }
-  } else modal(action,Number(id));
+  } else if (action === "ledger") await openLedger(Number(id));
+  else modal(action,Number(id));
 });
 
 function updateCount() {

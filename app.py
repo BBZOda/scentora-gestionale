@@ -17,6 +17,7 @@ ROOT = Path(__file__).resolve().parent
 DEMO = os.getenv("SCENTORA_DEMO") == "1"
 DB = os.getenv("SCENTORA_DB", str(ROOT / "scentora.sqlite"))
 SESSION_SECONDS = 12 * 3600
+PASSWORD_MIN = 5
 SCALE = 1_000_000
 MAX_VALUE = 1_000_000_000 * SCALE
 ASSETS = {"/": ("index.html", "text/html"), "/app.css": ("app.css", "text/css"),
@@ -45,6 +46,15 @@ CREATE TABLE IF NOT EXISTS movements (
  amount INTEGER NOT NULL, created TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
  actor TEXT NOT NULL, recipe TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS login_attempts (ip TEXT PRIMARY KEY, attempts INTEGER NOT NULL, since INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS contacts (
+ id INTEGER PRIMARY KEY, kind TEXT NOT NULL CHECK(kind IN ('customer','supplier')),
+ name TEXT NOT NULL, address TEXT NOT NULL, city TEXT NOT NULL,
+ country TEXT NOT NULL DEFAULT '', phone TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS contact_movements (
+ id INTEGER PRIMARY KEY, contact_id INTEGER NOT NULL REFERENCES contacts(id),
+ occurred_on TEXT NOT NULL, description TEXT NOT NULL, amount INTEGER NOT NULL CHECK(amount > 0));
+CREATE INDEX IF NOT EXISTS contact_movements_contact
+ ON contact_movements(contact_id, occurred_on DESC, id DESC);
 """
 
 
@@ -86,8 +96,8 @@ def initialize(path, demo=False):
             return
         name = os.getenv("SCENTORA_ADMIN", "admin")
         password = os.getenv("SCENTORA_ADMIN_PASSWORD", "")
-        if len(password) < 12:
-            raise RuntimeError("Configurare SCENTORA_ADMIN_PASSWORD con almeno 12 caratteri.")
+        if not PASSWORD_MIN <= len(password) <= 256:
+            raise RuntimeError(f"Configurare SCENTORA_ADMIN_PASSWORD con {PASSWORD_MIN}–256 caratteri.")
         db.execute("INSERT INTO users(name,password,role) VALUES (?,?,'admin')", (name, digest(password)))
 
 
@@ -180,6 +190,8 @@ def state(db, user):
         "units": rows(db, "SELECT * FROM units ORDER BY name COLLATE NOCASE"),
         "perfumes": rows(db, "SELECT * FROM perfumes ORDER BY name COLLATE NOCASE"),
         "recipes": rows(db, "SELECT * FROM recipes ORDER BY perfume,article"),
+        "customers": rows(db, "SELECT * FROM contacts WHERE kind='customer' ORDER BY name COLLATE NOCASE,id"),
+        "suppliers": rows(db, "SELECT * FROM contacts WHERE kind='supplier' ORDER BY name COLLATE NOCASE,id"),
         "movements": rows(db, """SELECT m.id,p.name,m.amount,m.created,m.actor
                                  FROM movements m JOIN perfumes p ON p.id=m.perfume ORDER BY m.id DESC LIMIT 100"""),
         "users": rows(db, "SELECT id,name,role,active FROM users ORDER BY name COLLATE NOCASE")
@@ -273,6 +285,25 @@ def produce(db, data, user):
                (perfume_id, quantity, user["name"], json.dumps(recipe)))
 
 
+def save_contact(db, data):
+    kind = data.get("kind")
+    if kind not in ("customer", "supplier"):
+        raise Problem("Seleziona un tipo di anagrafica valido.")
+    contact_id = data.get("id")
+    if contact_id is not None:
+        get_row(db, "SELECT id FROM contacts WHERE id=? AND kind=?", (integer(contact_id), kind))
+    fields = {"kind": kind, "name": field(data, "nome")}
+    for key, label, limit in (("address", "indirizzo", 200), ("city", "città", 100),
+                              ("phone", "telefono", 48), ("country", "nazione", 100)):
+        value = data.get(label, "")
+        if not isinstance(value, str) or len(value.strip()) > limit:
+            raise Problem(f"Il campo «{label}» accetta al massimo {limit} caratteri.")
+        fields[key] = value.strip()
+    if kind == "customer":
+        fields["country"] = ""
+    replace_record(db, "contacts", contact_id, fields)
+
+
 def save_user(db, data, user):
     target = data.get("id")
     role = data.get("role")
@@ -284,8 +315,8 @@ def save_user(db, data, user):
     password = data.get("password", "")
     fields = {"name": field(data, "utente"), "role": role, "active": active}
     if password or target is None:
-        if not isinstance(password, str) or not 12 <= len(password) <= 256:
-            raise Problem("La password deve contenere da 12 a 256 caratteri.")
+        if not isinstance(password, str) or not PASSWORD_MIN <= len(password) <= 256:
+            raise Problem(f"La password deve contenere da {PASSWORD_MIN} a 256 caratteri.")
         fields["password"] = digest(password)
     user_id = replace_record(db, "users", target, fields)
     if target is not None and (password or not active):
@@ -356,6 +387,14 @@ def api(env, path, method):
         if path == "/api/state" and method == "GET":
             db.execute("BEGIN")
             return state(db, user), "200 OK", headers
+        ledger = re.fullmatch(r"/api/contacts/([1-9][0-9]{0,15})/ledger", path)
+        if ledger and method == "GET":
+            contact_id = integer(int(ledger[1]))
+            db.execute("BEGIN")
+            get_row(db, "SELECT id FROM contacts WHERE id=?", (contact_id,))
+            movements = rows(db, """SELECT occurred_on,description,amount FROM contact_movements
+                                   WHERE contact_id=? ORDER BY occurred_on DESC,id DESC""", (contact_id,))
+            return {"movements": movements}, "200 OK", headers
         if method != "POST":
             raise Problem("Pagina non trovata.", "404 Not Found")
         action = path.removeprefix("/api/")
@@ -370,6 +409,8 @@ def api(env, path, method):
             save_perfume(db, data)
         elif action == "produce":
             produce(db, data, user)
+        elif action == "contact":
+            save_contact(db, data)
         elif action == "unit":
             if user["role"] != "admin":
                 raise Problem("Operazione riservata agli amministratori.", "403 Forbidden")

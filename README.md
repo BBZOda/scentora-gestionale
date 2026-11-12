@@ -10,7 +10,7 @@ Gestionale di produzione per articoli di base, profumi, distinte e carichi. Pyth
 
 - Crea o configura un Web Service Python dal repository. Avvio `python app.py`, porta assegnata con `PORT`, health check su `/health`.
 - Monta un disco persistente su `/var/data` e imposta `SCENTORA_DB=/var/data/scentora.sqlite`. Mantieni una sola istanza per il disco SQLite.
-- Imposta `SCENTORA_ADMIN` e `SCENTORA_ADMIN_PASSWORD` come variabili riservate. La password iniziale richiede almeno 12 caratteri e viene salvata come hash durante la prima inizializzazione. Ometti `SCENTORA_DEMO` per l’uso operativo.
+- Imposta `SCENTORA_ADMIN` e `SCENTORA_ADMIN_PASSWORD` come variabili riservate. La password iniziale richiede almeno 5 caratteri e viene salvata come hash durante la prima inizializzazione. Ometti `SCENTORA_DEMO` per l’uso operativo.
 - Il carico registra l’operatore e la distinta usata. La giacenza di ogni articolo è espressa nella sua unità di misura. La quantità di distinta si intende per una unità di profumo.
 - La copia dell’archivio SQLite va eseguita tramite l’API di backup SQLite o dopo aver arrestato il servizio.
 
