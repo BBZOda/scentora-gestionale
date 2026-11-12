@@ -218,7 +218,7 @@ function table(key, items) {
         return cell("Profumo",`<strong>${name}</strong>`) + cell("Unità",escape(unit(item.unit)))
           + cell("Costo distinta",euro(cost(item.id)),"numeric") + cell("Prezzo vendita",euro(item.price),"numeric")
           + cell("Giacenza",format(item.stock),"numeric")
-          + cell("Azioni",button("Carica",`produce:${item.id}`,"inline") + button("Modifica",`perfume:${item.id}`,"inline"),"row-actions");
+          + cell("Azioni",button("Carica",`produce:${item.id}`,"inline") + button("Distinta Art.",`perfume:${item.id}`,"inline"),"row-actions");
       case "movements":
         return cell("Profumo",`<strong>${name}</strong>`) + cell("Data e ora",date.format(new Date(item.created.replace(" ","T")+"Z")))
           + cell("Operatore",escape(item.actor)) + cell("Quantità",format(item.amount),"numeric");
@@ -235,7 +235,8 @@ function table(key, items) {
       case "purchases":
         return cell("Data",shortDate(item.occurred_on))
           + cell(key === "receipts" ? "Cliente" : "Fornitore",`<strong>${escape(item.contact)}</strong>`)
-          + cell(key === "receipts" ? "Profumo" : "Articolo di base",escape(item.description))
+          + cell(key === "receipts" ? "Profumo" : "Articolo di base",
+            key === "receipts" && item.perfume_id === null ? "—" : escape(item.description))
           + (key === "purchases" ? cell("Costo unitario",euro(item.unit_cost),"numeric")
             + cell("Unità di misura",escape(item.unit)) + cell("Quantità",format(item.quantity),"numeric") : "")
           + cell(key === "receipts" ? "Importo" : "Totale",euro(item.amount),"numeric")
@@ -253,7 +254,8 @@ const options = (items,id,label = item => item.name) => '<option value="">Selezi
   items.map(item => `<option value="${item.id}" ${item.id === id ? "selected" : ""}>${escape(label(item))}</option>`).join("");
 const input = (label,name,value = "",attrs = "required") => `<label>${label}<input name="${name}" value="${escape(value)}" ${attrs}></label>`;
 const numericInput = (label,name,value,required = true) => input(label,name,value == null ? "" : value / scale,`inputmode="decimal" maxlength="22" ${required ? "required" : ""}`);
-const select = (label,name,choices) => `<label>${label}<select name="${name}" required>${choices}</select></label>`;
+const select = (label,name,choices,required = true) =>
+  `<label>${label}<select name="${name}" ${required ? "required" : ""}>${choices}</select></label>`;
 const units = id => select("Unità di misura","unit",options(state.units,id));
 const selected = (a,b) => a === b ? "selected" : "";
 
@@ -321,12 +323,12 @@ function modal(action,id) {
       const contacts = receipt ? state.customers : state.suppliers;
       const products = receipt ? state.perfumes : state.articles;
       if (!contacts.length) return notify(receipt ? "Crea prima un cliente." : "Crea prima un fornitore.");
-      if (!products.length) return notify(receipt ? "Crea prima un profumo." : "Crea prima un articolo di base.");
+      if (!receipt && !products.length) return notify("Crea prima un articolo di base.");
       title = receipt ? "Nuovo incasso" : "Nuovo acquisto articolo";
       label = receipt ? "Registra incasso" : "Registra acquisto";
       fields = `<div class="form-grid">${input("Data","data",today.format(new Date()),'type="date" required')}
         ${select(receipt ? "Cliente" : "Fornitore","contact",options(contacts))}
-        ${receipt ? select("Profumo","perfume",options(products)) + numericInput("Importo (€)","amount")
+        ${receipt ? select("Profumo","perfume",options(products),false) + numericInput("Importo (€)","amount")
           : select("Articolo di base","article",options(products,null,item => item.code + " · " + item.name))
             + input("Costo unitario (€)","display_cost","","readonly")
             + input("Unità di misura","display_unit","","readonly")
@@ -403,7 +405,7 @@ function formData(form) {
     data.contact = Number(data.contact);
     data.request_key = form.dataset.requestKey;
   }
-  if (action === "receipt") data.perfume = Number(data.perfume);
+  if (action === "receipt") data.perfume = data.perfume ? Number(data.perfume) : null;
   if (action === "purchase") {
     data.article = Number(data.article);
     const item = article(data.article);

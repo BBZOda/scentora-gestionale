@@ -57,15 +57,18 @@ CREATE TABLE IF NOT EXISTS contact_movements (
  occurred_on TEXT NOT NULL, description TEXT NOT NULL, amount INTEGER NOT NULL CHECK(amount > 0));
 CREATE INDEX IF NOT EXISTS contact_movements_contact
  ON contact_movements(contact_id, occurred_on DESC, id DESC);
-CREATE TABLE IF NOT EXISTS accounting_details (
+"""
+
+ACCOUNTING_DETAILS_SCHEMA = """
+CREATE TABLE accounting_details (
  movement_id INTEGER PRIMARY KEY REFERENCES contact_movements(id),
  perfume_id INTEGER REFERENCES perfumes(id), article_id INTEGER REFERENCES articles(id),
  unit TEXT, unit_cost INTEGER, quantity INTEGER, notes TEXT NOT NULL,
  request_key TEXT NOT NULL UNIQUE, request_hash TEXT NOT NULL,
- CHECK((perfume_id IS NOT NULL AND article_id IS NULL AND unit IS NULL
+ CHECK((article_id IS NULL AND unit IS NULL
         AND unit_cost IS NULL AND quantity IS NULL)
        OR (perfume_id IS NULL AND article_id IS NOT NULL AND unit IS NOT NULL
-           AND unit_cost > 0 AND quantity > 0)));
+           AND unit_cost IS NOT NULL AND unit_cost > 0 AND quantity IS NOT NULL AND quantity > 0)));
 """
 
 
@@ -88,10 +91,25 @@ def connect(path):
     return db
 
 
+def migrate_accounting(db):
+    if db.execute("PRAGMA user_version").fetchone()[0] >= 1:
+        return
+    exists = db.execute("SELECT 1 FROM sqlite_schema WHERE type='table' AND name='accounting_details'").fetchone()
+    if exists:
+        db.execute("ALTER TABLE accounting_details RENAME TO accounting_details_previous")
+    db.execute(ACCOUNTING_DETAILS_SCHEMA)
+    if exists:
+        columns = "movement_id,perfume_id,article_id,unit,unit_cost,quantity,notes,request_key,request_hash"
+        db.execute(f"INSERT INTO accounting_details ({columns}) SELECT {columns} FROM accounting_details_previous")
+        db.execute("DROP TABLE accounting_details_previous")
+    db.execute("PRAGMA user_version = 1")
+
+
 def initialize(path, demo=False):
     with closing(connect(path)) as db, db:
         db.executescript(SCHEMA)
         db.execute("BEGIN IMMEDIATE")
+        migrate_accounting(db)
         db.executemany("INSERT OR IGNORE INTO units(name) VALUES (?)", [("ml.",), ("pz.",), ("l.",)])
         if db.execute("SELECT 1 FROM users LIMIT 1").fetchone():
             return
@@ -204,7 +222,7 @@ def state(db, user):
         "customers": rows(db, "SELECT * FROM contacts WHERE kind='customer' ORDER BY name COLLATE NOCASE,id"),
         "suppliers": rows(db, "SELECT * FROM contacts WHERE kind='supplier' ORDER BY name COLLATE NOCASE,id"),
         "accounting": rows(db, """SELECT m.id,m.occurred_on,m.description,m.amount,c.name AS contact,
-                                  c.kind,d.unit,d.unit_cost,d.quantity,d.notes
+                                  c.kind,d.perfume_id,d.unit,d.unit_cost,d.quantity,d.notes
                                   FROM accounting_details d JOIN contact_movements m ON m.id=d.movement_id
                                   JOIN contacts c ON c.id=m.contact_id ORDER BY m.occurred_on DESC,m.id DESC"""),
         "movements": rows(db, """SELECT m.id,p.name,m.amount,m.created,m.actor
@@ -343,9 +361,11 @@ def record_accounting(db, data, kind):
     get_row(db, "SELECT id FROM contacts WHERE id=? AND kind=?", (contact_id, kind))
     perfume_id = article_id = unit = unit_cost = quantity = None
     if kind == "customer":
-        perfume_id = integer(data.get("perfume"))
-        perfume = get_row(db, "SELECT name FROM perfumes WHERE id=?", (perfume_id,))
-        description = perfume["name"]
+        description = "Incasso generico"
+        if data.get("perfume") is not None:
+            perfume_id = integer(data["perfume"])
+            perfume = get_row(db, "SELECT name FROM perfumes WHERE id=?", (perfume_id,))
+            description = perfume["name"]
         total = amount(data.get("amount"), positive=True)
         if total % CENT:
             raise Problem("Inserisci un importo con al massimo due decimali.")
@@ -438,6 +458,10 @@ def api(env, path, method):
     else:
         path_db = DB
     with closing(connect(path_db)) as db, db:
+        if DEMO and db.execute("PRAGMA user_version").fetchone()[0] == 0:
+            db.execute("BEGIN IMMEDIATE")
+            migrate_accounting(db)
+            db.commit()
         if method == "POST":
             data = read_json(env)
             db.execute("BEGIN IMMEDIATE")
