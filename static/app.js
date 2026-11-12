@@ -36,8 +36,10 @@ const escape = value => String(value ?? "").replace(/[&<>"']/g, ch => ({"&":"&am
 const scale = 1e6;
 const cent = scale / 100;
 const purchaseDivisor = BigInt(scale) * BigInt(cent);
-const number = new Intl.NumberFormat("it-IT", {maximumFractionDigits: 6});
-const money = new Intl.NumberFormat("it-IT", {style:"currency", currency:"EUR", maximumFractionDigits: 6});
+const number = new Intl.NumberFormat("it-IT", {useGrouping:"always", maximumFractionDigits:6});
+const money = new Intl.NumberFormat("it-IT", {style:"currency", currency:"EUR", useGrouping:"always", maximumFractionDigits:6});
+const saleMoney = new Intl.NumberFormat("it-IT", {style:"currency", currency:"EUR", useGrouping:"always", minimumFractionDigits:2, maximumFractionDigits:2});
+const saleNumber = new Intl.NumberFormat("it-IT", {useGrouping:"always", minimumFractionDigits:2, maximumFractionDigits:2});
 const format = value => number.format(value / scale);
 const euro = value => money.format(value / scale);
 const shortDate = value => value.split("-").reverse().join("/");
@@ -222,7 +224,7 @@ function table(key, items) {
           + cell("Fornitore",escape(state.suppliers.find(supplier => supplier.id === item.supplier_id)?.name));
       case "perfumes":
         return cell("Profumo",`<strong>${name}</strong>`) + cell("Unità",escape(unit(item.unit)))
-          + cell("Costo distinta",euro(cost(item.id)),"numeric") + cell("Prezzo vendita",euro(item.price),"numeric")
+          + cell("Costo distinta",euro(cost(item.id)),"numeric") + cell("Prezzo vendita",saleMoney.format(item.price / scale),"numeric")
           + cell("Giacenza",format(item.stock),"numeric")
           + cell("Azioni",button("Carica",`produce:${item.id}`,"inline") + button("Distinta Art.",`perfume:${item.id}`,"inline"),"row-actions");
       case "movements":
@@ -304,7 +306,7 @@ function modal(action,id) {
       title = item ? "Modifica profumo" : "Nuovo profumo";
       fields = `<div class="form-grid">${input("Nome profumo","profumo",item?.name,'required maxlength="120"')}
         ${units(item?.unit ?? state.units.find(x => x.name === "pz.")?.id)}
-        ${numericInput("Prezzo vendita (€)","price",item?.price)}</div>
+        ${input("Prezzo vendita (€)","price",item ? saleNumber.format(item.price / scale) : "",'inputmode="decimal" maxlength="22" required')}</div>
         <fieldset><legend>Distinta base</legend><div id="recipe-lines">${(item ? recipe(id) : [{}]).map(recipeLine).join("")}</div>
         ${button("Aggiungi articolo","add-line","secondary","plus")}</fieldset>`;
       break;
@@ -439,6 +441,22 @@ function updatePreview() {
   }).join("")}</ul><small>${quantity > 0 ? `Carico in ${escape(unit(perfume.unit))}` : "Quantità mostrate per una singola unità."}</small></div>`;
 }
 
+function parseSalePrice(text) {
+  const value = text.trim();
+  if (/^(?:\d+|\d{1,3}(?:\.\d{3})+)(?:,\d{0,2})?$/.test(value)) {
+    return value.replaceAll(".", "").replace(",", ".");
+  }
+  if (/^(?:\d+\.\d{0,2}|[.,]\d{1,2})$/.test(value)) return value.replace(",", ".");
+  return null;
+}
+
+document.addEventListener("focusout", event => {
+  const field = event.target;
+  if (!field.matches('form[data-form="perfume"] input[name="price"]')) return;
+  const value = parseSalePrice(field.value);
+  if (value !== null) field.value = saleNumber.format(Number(value));
+});
+
 function formData(form) {
   const action = form.dataset.form;
   const data = Object.fromEntries(new FormData(form));
@@ -465,9 +483,14 @@ function formData(form) {
     delete data.display_cost;
     delete data.display_unit;
   }
-  if (action === "perfume") data.recipe = [...form.querySelectorAll(".recipe-line")].map(line => ({
-    article: Number(line.querySelector("select").value), amount: line.querySelector("input").value,
-  }));
+  if (action === "perfume") {
+    const price = parseSalePrice(data.price);
+    if (price === null) throw new Error("Inserisci un prezzo di vendita con al massimo due decimali.");
+    data.price = price;
+    data.recipe = [...form.querySelectorAll(".recipe-line")].map(line => ({
+      article: Number(line.querySelector("select").value), amount: line.querySelector("input").value,
+    }));
+  }
   return data;
 }
 
@@ -572,7 +595,7 @@ function updateCount() {
   const count = document.querySelector("#count");
   if (count) {
     const total = filtered(section()).length;
-    count.textContent = total === 1 ? "1 voce" : total + " voci";
+    count.textContent = total === 1 ? "1 voce" : number.format(total) + " voci";
   }
 }
 document.addEventListener("input", event => {
