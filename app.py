@@ -607,9 +607,39 @@ def import_articles(path):
           f"{len(articles)-inserted} già presenti.", flush=True)
 
 
+def import_perfumes(path):
+    payload = os.getenv("SCENTORA_PERFUME_IMPORT")
+    if not payload:
+        return
+    data = json.loads(payload)
+    names = data["names"]
+    if not isinstance(names, list) or not names:
+        raise RuntimeError("Importazione profumi: elenco non valido.")
+    price = amount(data["price"], positive=True)
+    unit_name = field(data, "unit", 24)
+    batch = hashlib.sha256(payload.encode()).hexdigest()
+    with closing(connect(path)) as db, db:
+        db.execute("BEGIN IMMEDIATE")
+        db.execute("CREATE TABLE IF NOT EXISTS perfume_imports (batch TEXT PRIMARY KEY)")
+        if db.execute("SELECT 1 FROM perfume_imports WHERE batch=?", (batch,)).fetchone():
+            return
+        unit = get_row(db, "SELECT id FROM units WHERE name=?", (unit_name,))["id"]
+        inserted = 0
+        for value in names:
+            name = field({"nome": value}, "nome")
+            inserted += db.execute(
+                """INSERT INTO perfumes(name,unit,price) VALUES (?,?,?)
+                   ON CONFLICT(name) DO NOTHING""", (name, unit, price)
+            ).rowcount
+        db.execute("INSERT INTO perfume_imports VALUES (?)", (batch,))
+    print(f"Importazione profumi completata: {inserted} inseriti, "
+          f"{len(names)-inserted} già presenti.", flush=True)
+
+
 if not DEMO:
     initialize(DB)
     import_articles(DB)
+    import_perfumes(DB)
 
 if __name__ == "__main__":
     with make_server("0.0.0.0", int(os.getenv("PORT", "8000")), application) as server:
