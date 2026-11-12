@@ -19,7 +19,7 @@ DEMO = os.getenv("SCENTORA_DEMO") == "1"
 DB = os.getenv("SCENTORA_DB", str(ROOT / "scentora.sqlite"))
 SESSION_SECONDS = 12 * 3600
 PASSWORD_MIN = 5
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 SCALE = 1_000_000
 CENT = SCALE // 100
 MAX_VALUE = 1_000_000_000 * SCALE
@@ -113,14 +113,38 @@ def migrate_schema(db):
         db.execute("ALTER TABLE articles ADD COLUMN scentora_perfume_id INTEGER REFERENCES perfumes(id)")
     if version < 3:
         db.execute("ALTER TABLE articles ADD COLUMN supplier_id INTEGER REFERENCES contacts(id)")
+    if version < 4:
+        db.execute("""CREATE TABLE articles_new (
+                      id INTEGER PRIMARY KEY, code TEXT UNIQUE COLLATE NOCASE, name TEXT NOT NULL,
+                      unit INTEGER NOT NULL REFERENCES units(id), cost INTEGER NOT NULL CHECK(cost >= 0),
+                      stock INTEGER NOT NULL CHECK(stock >= 0),
+                      scentora_perfume_id INTEGER REFERENCES perfumes(id), supplier_id INTEGER REFERENCES contacts(id))""")
+        columns = "id,code,name,unit,cost,stock,scentora_perfume_id,supplier_id"
+        db.execute(f"INSERT INTO articles_new ({columns}) SELECT {columns} FROM articles")
+        db.execute("DROP TABLE articles")
+        db.execute("ALTER TABLE articles_new RENAME TO articles")
+        if db.execute("PRAGMA foreign_key_check").fetchone():
+            raise RuntimeError("Collegamenti non validi dopo la migrazione degli articoli.")
     db.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+
+
+def upgrade_schema(db):
+    if db.execute("PRAGMA user_version").fetchone()[0] >= SCHEMA_VERSION:
+        return
+    db.execute("PRAGMA foreign_keys = OFF")
+    try:
+        with db:
+            db.execute("BEGIN IMMEDIATE")
+            migrate_schema(db)
+    finally:
+        db.execute("PRAGMA foreign_keys = ON")
 
 
 def initialize(path, demo=False):
     with closing(connect(path)) as db, db:
         db.executescript(SCHEMA)
+        upgrade_schema(db)
         db.execute("BEGIN IMMEDIATE")
-        migrate_schema(db)
         db.executemany("INSERT OR IGNORE INTO units(name) VALUES (?)", [("ml.",), ("pz.",), ("l.",)])
         if db.execute("SELECT 1 FROM users LIMIT 1").fetchone():
             return
@@ -254,8 +278,12 @@ def save_article(db, data):
                 "SELECT 1 FROM recipes WHERE article=?", (article_id,)).fetchone()):
             raise Problem("L’unità è già utilizzata. Crea un nuovo articolo per usare un’altra unità.")
         stock = article["stock"]
+    code = data.get("codice")
+    if code is not None and (not isinstance(code, str) or len(code.strip()) > 40):
+        raise Problem("Il codice accetta al massimo 40 caratteri.")
+    code = (code or "").strip() or None
     fields = {
-        "code": field(data, "codice", 40), "name": field(data, "descrizione"),
+        "code": code, "name": field(data, "descrizione"),
         "unit": unit, "cost": amount(data.get("cost") or 0), "stock": stock,
     }
     if "scentora_perfume_id" in data:
@@ -333,7 +361,8 @@ def produce(db, data, user):
         if remainder or (line["unit"].casefold() == "pz." and required % SCALE):
             raise Problem(f"Quantità incompatibile con l’unità o la precisione di {line['name']}.")
         if required > line["stock"]:
-            raise Problem(f"Giacenza insufficiente per {line['name']} ({line['code']}).")
+            label = f"{line['name']} ({line['code']})" if line["code"] else line["name"]
+            raise Problem(f"Giacenza insufficiente per {label}.")
         line["required"] = required
     db.executemany("UPDATE articles SET stock=stock-? WHERE id=?",
                    ((line["required"], line["id"]) for line in recipe))
@@ -397,7 +426,7 @@ def record_accounting(db, data, kind):
         article_id = integer(data.get("article"))
         article = get_row(db, """SELECT a.code,a.name,a.cost,a.unit,u.name AS unit_name FROM articles a
                                  JOIN units u ON u.id=a.unit WHERE a.id=?""", (article_id,))
-        description = f"{article['code']} · {article['name']}"
+        description = f"{article['code']} · {article['name']}" if article["code"] else article["name"]
         unit = article["unit_name"]
         unit_cost = article["cost"]
         if not unit_cost:
@@ -482,10 +511,8 @@ def api(env, path, method):
     else:
         path_db = DB
     with closing(connect(path_db)) as db, db:
-        if DEMO and db.execute("PRAGMA user_version").fetchone()[0] < SCHEMA_VERSION:
-            db.execute("BEGIN IMMEDIATE")
-            migrate_schema(db)
-            db.commit()
+        if DEMO:
+            upgrade_schema(db)
         if method == "POST":
             data = read_json(env)
             db.execute("BEGIN IMMEDIATE")

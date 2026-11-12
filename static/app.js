@@ -56,6 +56,7 @@ function section() {
 }
 const unit = id => state.units.find(item => item.id === id)?.name ?? "";
 const article = id => state.articles.find(item => item.id === id);
+const articleLabel = item => item.code ? item.code + " · " + item.name : item.name;
 const recipe = id => state.recipes.filter(line => line.perfume === id);
 const cost = id => recipe(id).reduce((total,line) => total + (article(line.article)?.cost ?? 0) * line.amount / scale, 0);
 const button = (label, action, type = "secondary", symbol = "") => `<button type="button" class="button ${type}" data-action="${action}">${symbol ? icon(symbol) : ""}${label}</button>`;
@@ -265,7 +266,7 @@ const selected = (a,b) => a === b ? "selected" : "";
 
 function recipeLine(line = {}) {
   return `<div class="recipe-line">
-    ${select("Articolo di base","lineArticle",options(state.articles,line.article,item => item.code + " · " + item.name))}
+    ${select("Articolo di base","lineArticle",options(state.articles,line.article,articleLabel))}
     ${numericInput("Quantità per unità","lineAmount",line.amount)}
     <button type="button" class="icon-button" data-action="remove-line" aria-label="Rimuovi riga">${icon("close")}</button>
     <span class="line-meta"></span></div>`;
@@ -280,7 +281,7 @@ function modal(action,id) {
   switch (action) {
     case "article":
       title = item ? "Modifica articolo" : "Nuovo articolo di base";
-      fields = `<div class="form-grid">${input("Codice","codice",item?.code,'required maxlength="40"')}
+      fields = `<div class="form-grid">${input("Codice","codice",item?.code,'maxlength="40"')}
         ${input("Descrizione Articolo","descrizione",item?.name,'required maxlength="120"')}
         ${select("Profumo Scentora","scentora_perfume_id",options(state.perfumes,item?.scentora_perfume_id),false)}
         ${select("Fornitore","supplier_id",options(state.suppliers,item?.supplier_id),false)}
@@ -336,7 +337,7 @@ function modal(action,id) {
       fields = `<div class="form-grid">${input("Data","data",today.format(new Date()),'type="date" required')}
         ${select(receipt ? "Cliente" : "Fornitore","contact",options(contacts))}
         ${receipt ? select("Profumo","perfume",options(products),false) + numericInput("Importo (€)","amount")
-          : select("Articolo di base","article",options(products,null,item => item.code + " · " + item.name))
+          : select("Articolo di base","article",options(products,null,articleLabel))
             + input("Costo unitario (€)","display_cost","","readonly")
             + input("Unità di misura","display_unit","","readonly")
             + numericInput("Quantità","quantity")}</div>
