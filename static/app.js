@@ -59,7 +59,8 @@ const unit = id => state.units.find(item => item.id === id)?.name ?? "";
 const article = id => state.articles.find(item => item.id === id);
 const articleLabel = item => item.code ? item.code + " · " + item.name : item.name;
 const recipe = id => state.recipes.filter(line => line.perfume === id);
-const cost = id => recipe(id).reduce((total,line) => total + (article(line.article)?.cost ?? 0) * line.amount / scale, 0);
+const lineCost = (item,quantity) => (item?.cost ?? 0) * quantity;
+const cost = id => recipe(id).reduce((total,line) => total + lineCost(article(line.article),line.amount / scale), 0);
 const button = (label, action, type = "secondary", symbol = "") => `<button type="button" class="button ${type}" data-action="${action}">${symbol ? icon(symbol) : ""}${label}</button>`;
 const brand = `<a class="brand" href="#dashboard">${mark}<span>SCENTORA<small>GESTIONALE DI PRODUZIONE</small></span></a>`;
 
@@ -307,7 +308,9 @@ function modal(action,id) {
       title = item ? "Modifica profumo" : "Nuovo profumo";
       fields = `<div class="form-grid">${input("Nome profumo","profumo",item?.name,'required maxlength="120"')}
         ${units(item?.unit ?? state.units.find(x => x.name === "pz.")?.id)}
-        ${input("Prezzo vendita (€)","price",item ? saleNumber.format(item.price / scale) : "",'inputmode="decimal" maxlength="22" required')}</div>
+        ${input("Prezzo vendita (€)","price",item ? saleNumber.format(item.price / scale) : "",'inputmode="decimal" maxlength="22" required')}
+        <div class="recipe-cost"><span id="recipe-cost-label">Costo distinta</span>
+          <output id="recipe-cost" aria-labelledby="recipe-cost-label"></output></div></div>
         <fieldset><legend>Distinta base</legend><div id="recipe-lines">${(item ? recipe(id) : [{}]).map(recipeLine).join("")}</div>
         ${button("Aggiungi articolo","add-line","secondary","plus")}</fieldset>`;
       break;
@@ -467,10 +470,18 @@ function updatePreview() {
       }
     }
   }
+  let totalCost = 0;
   dialog.querySelectorAll(".recipe-line").forEach(line => {
     const item = article(Number(line.querySelector("select").value));
     line.querySelector(".line-meta").textContent = item ? `${unit(item.unit)} · ${euro(item.cost)} per unità · ${format(item.stock)} disponibili` : "";
+    const quantity = Number(line.querySelector("input").value.replace(",","."));
+    if (Number.isFinite(quantity) && quantity > 0) totalCost += lineCost(item,quantity);
   });
+  const recipeCost = dialog.querySelector("#recipe-cost");
+  if (recipeCost) {
+    const formatted = euro(totalCost);
+    if (recipeCost.value !== formatted) recipeCost.value = formatted;
+  }
   const preview = dialog.querySelector("#production-preview");
   if (!preview) return;
   const form = dialog.querySelector("form");
@@ -625,6 +636,7 @@ document.addEventListener("click", async event => {
   } else if (action === "remove-line") {
     if (dialog.querySelectorAll(".recipe-line").length > 1) {
       control.closest(".recipe-line").remove();
+      updatePreview();
       dialog.querySelector('[data-action="add-line"]').focus();
     } else notify("La distinta deve contenere almeno un articolo.");
   } else if (action === "refresh") await refresh();

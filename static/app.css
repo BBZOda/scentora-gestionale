@@ -181,6 +181,22 @@ dialog::backdrop { background: #21110cd4; backdrop-filter: blur(4px); }
 .dialog-actions .primary { background: var(--brown); color: var(--cream); }
 .dialog-actions .primary:hover { background: #583329; }
 .form-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; }
+form[data-form="perfume"] input[name="profumo"] {
+  font-size: 18px;
+  background: #efe5d9;
+}
+.recipe-cost { display: grid; gap: 6px; font-size: 14px; font-weight: 650; }
+.recipe-cost output {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #efe5d9;
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+}
 .form-error { border-radius: var(--radius); padding: 10px; background: #f5ded9; color: var(--error); }
 fieldset { min-width: 0; margin: 16px 0 0; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius); }
 legend { padding-inline: 5px; font-weight: 700; font-size: 15px; }
