@@ -19,7 +19,7 @@ DEMO = os.getenv("SCENTORA_DEMO") == "1"
 DB = os.getenv("SCENTORA_DB", str(ROOT / "scentora.sqlite"))
 SESSION_SECONDS = 12 * 3600
 PASSWORD_MIN = 5
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 10
 SCALE = 1_000_000
 CENT = SCALE // 100
 MAX_VALUE = 1_000_000_000 * SCALE
@@ -138,6 +138,8 @@ def migrate_schema(db):
         db.execute("ALTER TABLE accounting_details ADD COLUMN stock_applied INTEGER NOT NULL DEFAULT 0 CHECK(stock_applied IN (0,1))")
     if version < 9:
         db.execute("ALTER TABLE movements ADD COLUMN cancelled INTEGER NOT NULL DEFAULT 0 CHECK(cancelled IN (0,1))")
+    if version < 10:
+        db.execute("ALTER TABLE contacts ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK(archived IN (0,1))")
     db.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
 
@@ -267,8 +269,8 @@ def state(db, user):
         "units": rows(db, "SELECT * FROM units ORDER BY name COLLATE NOCASE"),
         "perfumes": rows(db, "SELECT * FROM perfumes ORDER BY name COLLATE NOCASE"),
         "recipes": rows(db, "SELECT * FROM recipes ORDER BY perfume,article"),
-        "customers": rows(db, "SELECT * FROM contacts WHERE kind='customer' ORDER BY name COLLATE NOCASE,id"),
-        "suppliers": rows(db, "SELECT * FROM contacts WHERE kind='supplier' ORDER BY name COLLATE NOCASE,id"),
+        "customers": rows(db, "SELECT * FROM contacts WHERE kind='customer' AND archived=0 ORDER BY name COLLATE NOCASE,id"),
+        "suppliers": rows(db, "SELECT * FROM contacts WHERE kind='supplier' AND archived=0 ORDER BY name COLLATE NOCASE,id"),
         "accounting": rows(db, """SELECT m.id,m.occurred_on,m.description,m.amount,c.name AS contact,
                                   c.kind,d.perfume_id,d.unit,d.unit_cost,d.quantity,d.notes
                                   FROM accounting_details d JOIN contact_movements m ON m.id=d.movement_id
@@ -310,7 +312,7 @@ def save_article(db, data):
         supplier_id = data["supplier_id"]
         if supplier_id is not None:
             supplier_id = integer(supplier_id)
-            get_row(db, "SELECT id FROM contacts WHERE id=? AND kind='supplier'", (supplier_id,))
+            get_row(db, "SELECT id FROM contacts WHERE id=? AND kind='supplier' AND archived=0", (supplier_id,))
         fields["supplier_id"] = supplier_id
     replace_record(db, "articles", data.get("id"), fields)
 
@@ -471,7 +473,7 @@ def save_contact(db, data):
         raise Problem("Seleziona un tipo di anagrafica valido.")
     contact_id = data.get("id")
     if contact_id is not None:
-        get_row(db, "SELECT id FROM contacts WHERE id=? AND kind=?", (integer(contact_id), kind))
+        get_row(db, "SELECT id FROM contacts WHERE id=? AND kind=? AND archived=0", (integer(contact_id), kind))
     fields = {"kind": kind, "name": field(data, "nome")}
     for key, label, limit in (("address", "indirizzo", 200), ("city", "città", 100),
                               ("phone", "telefono", 48), ("country", "nazione", 100)):
@@ -482,6 +484,19 @@ def save_contact(db, data):
     if kind == "customer":
         fields["country"] = ""
     replace_record(db, "contacts", contact_id, fields)
+
+
+def delete_contact(db, data):
+    contact_id = integer(data.get("id"))
+    contact = get_row(db, "SELECT kind,archived FROM contacts WHERE id=?", (contact_id,))
+    if contact["archived"]:
+        return
+    if contact["kind"] == "supplier" and db.execute(
+        "SELECT 1 FROM articles WHERE supplier_id=? AND archived=0 LIMIT 1", (contact_id,)
+    ).fetchone():
+        raise Problem("Prima di eliminare il fornitore, rimuovilo o sostituiscilo negli articoli di base collegati.",
+                      "409 Conflict")
+    db.execute("UPDATE contacts SET archived=1 WHERE id=?", (contact_id,))
 
 
 def record_accounting(db, data, kind):
@@ -500,7 +515,7 @@ def record_accounting(db, data, kind):
     if not isinstance(notes, str) or len(notes) > 1000:
         raise Problem("Le note possono contenere al massimo 1.000 caratteri.")
     contact_id = integer(data.get("contact"))
-    get_row(db, "SELECT id FROM contacts WHERE id=? AND kind=?", (contact_id, kind))
+    get_row(db, "SELECT id FROM contacts WHERE id=? AND kind=? AND archived=0", (contact_id, kind))
     perfume_id = article_id = unit = unit_cost = quantity = None
     if kind == "customer":
         description = "Incasso generico"
@@ -683,6 +698,8 @@ def api(env, path, method):
             cancel_movement(db, data)
         elif action == "contact":
             save_contact(db, data)
+        elif action == "delete-contact":
+            delete_contact(db, data)
         elif action in ("receipt", "purchase"):
             record_accounting(db, data, "customer" if action == "receipt" else "supplier")
         elif action == "unit":
@@ -813,7 +830,7 @@ def apply_article_bulk_update(path):
         db.execute("CREATE TABLE IF NOT EXISTS article_bulk_updates (batch TEXT PRIMARY KEY)")
         if db.execute("SELECT 1 FROM article_bulk_updates WHERE batch=?", (batch,)).fetchone():
             return
-        contact = db.execute("""SELECT id FROM contacts WHERE kind='supplier' AND name=? COLLATE NOCASE
+        contact = db.execute("""SELECT id FROM contacts WHERE kind='supplier' AND archived=0 AND name=? COLLATE NOCASE
                                 ORDER BY id LIMIT 1""", (supplier,)).fetchone()
         supplier_id = contact["id"] if contact else db.execute(
             "INSERT INTO contacts(kind,name,address,city,phone) VALUES ('supplier',?,'','','')",

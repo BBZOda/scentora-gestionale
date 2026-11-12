@@ -374,8 +374,8 @@ function modal(action,id) {
   dialog.innerHTML = `<div class="dialog-heading"><h2 id="dialog-title">${title}</h2><button class="icon-button" data-action="close" aria-label="Chiudi">${icon("close")}</button></div>
     <form data-form="${action}" data-id="${id || ""}">
       <div class="dialog-content">${fields}<p class="form-error" role="alert" hidden></p></div>
-      <div class="dialog-actions">${action === "article" && item
-        ? button("Elimina",`confirm-article-delete:${item.id}`,"article-delete delete-start") : ""}
+      <div class="dialog-actions">${item && ["article","customer","supplier"].includes(action)
+        ? button("Elimina",`confirm-${action}-delete:${item.id}`,"article-delete delete-start") : ""}
         ${button("Annulla","close")}<button class="button primary" type="submit">${label}</button></div>
     </form>`;
   if (action === "receipt" || action === "purchase" || action === "unload") {
@@ -404,6 +404,26 @@ function confirmArticleDelete(id) {
       </div>
     </form>`;
   dialog.querySelector(`[data-action="article:${id}"]`).focus();
+}
+
+function confirmContactDelete(kind,id) {
+  const item = state[kind === "customer" ? "customers" : "suppliers"].find(contact => contact.id === id);
+  if (!item) return;
+  const label = kind === "customer" ? "cliente" : "fornitore";
+  dialog.innerHTML = `<div class="dialog-heading"><h2 id="dialog-title">Eliminare il ${label}?</h2>
+    <button class="icon-button" data-action="close" aria-label="Chiudi">${icon("close")}</button></div>
+    <form data-form="delete-contact" data-id="${id}">
+      <div class="dialog-content">
+        <div class="delete-summary"><strong>${escape(item.name)}</strong></div>
+        <p>La scheda verrà rimossa dall’anagrafica operativa. I movimenti già registrati resteranno in Contabilità.</p>
+        <p class="form-error" role="alert" hidden></p>
+      </div>
+      <div class="dialog-actions">
+        ${button("Annulla",`${kind}:${id}`)}
+        <button class="button article-delete delete-confirm" type="submit">Conferma eliminazione</button>
+      </div>
+    </form>`;
+  dialog.querySelector(`[data-action="${kind}:${id}"]`).focus();
 }
 
 function confirmMovement(id) {
@@ -568,6 +588,7 @@ document.addEventListener("submit", async event => {
       unload: "Scarico registrato e giacenza aggiornata.",
       purchase: "Acquisto registrato e giacenza aggiornata.",
       "delete-article": "Articolo eliminato.",
+      "delete-contact": "Scheda eliminata.",
       "cancel-movement": "Movimento eliminato e giacenze aggiornate.",
     };
     if (action !== "login") notify(messages[action] || "Modifiche salvate.");
@@ -612,6 +633,8 @@ document.addEventListener("click", async event => {
     catch (error) { notify(error.message); }
   } else if (action === "ledger") await openLedger(Number(id));
   else if (action === "confirm-article-delete") confirmArticleDelete(Number(id));
+  else if (action === "confirm-customer-delete") confirmContactDelete("customer",Number(id));
+  else if (action === "confirm-supplier-delete") confirmContactDelete("supplier",Number(id));
   else if (action === "confirm-movement") confirmMovement(Number(id));
   else modal(action,Number(id));
 });

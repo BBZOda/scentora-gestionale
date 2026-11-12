@@ -142,7 +142,7 @@ tr:hover td { background: #ebd9c946; }
 .dialog-actions .delete-start { margin-right: auto; }
 .button.delete-confirm { background: var(--error); color: #fff7f3; border-color: var(--error); }
 .button.delete-confirm:hover { background: #68231f; }
-dialog:has(form[data-form="delete-article"]) { width: min(510px,calc(100% - 24px)); }
+dialog:has(form:is([data-form="delete-article"], [data-form="delete-contact"])) { width: min(510px,calc(100% - 24px)); }
 .delete-summary { display: grid; gap: 4px; background: #f4e4dc; border-left: 3px solid #b96a59; border-radius: var(--radius); padding: 12px 14px; overflow-wrap: anywhere; }
 .delete-summary small { color: var(--muted); }
 .delete-summary + p { margin-top: 12px; }
