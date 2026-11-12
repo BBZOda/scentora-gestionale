@@ -189,7 +189,7 @@ function filtered(key) {
 }
 
 const cell = (label,value,style = "") => `<td data-label="${label}" class="${style}">${value}</td>`;
-function table(key, items) {
+function table(key, items, movementActions = key === "movements" && section() === "movements") {
   if (!items.length) {
     const messages = {articles:"Aggiungi il primo articolo di base.", perfumes:"Crea un profumo con la sua distinta base.",
       movements:"I movimenti confermati compariranno qui.", units:"Aggiungi un’unità di misura.", users:"Crea il primo utente.",
@@ -201,7 +201,7 @@ function table(key, items) {
   const headings = {
     articles:["Codice","Descrizione Articolo","Profumo Scentora","Unità","Costo unitario","Giacenza","Azioni","Fornitore"],
     perfumes:["Profumo","Unità","Costo distinta","Prezzo vendita","Giacenza","Azioni"],
-    movements:["Profumo","Data","Movimento","Operatore","Quantità","Note"],
+    movements:["Profumo","Data","Movimento","Operatore","Quantità","Note",...(movementActions ? ["Azioni"] : [])],
     customers:["Nome","Indirizzo","Città","Telefono","Contabile","Azioni"],
     suppliers:["Nome","Indirizzo","Città","Nazione","Telefono","Contabile","Azioni"],
     receipts:["Data","Cliente","Profumo","Importo","Note"],
@@ -232,7 +232,8 @@ function table(key, items) {
           escape(shortDate(item.occurred_on ?? today.format(new Date(item.created.replace(" ","T")+"Z")))))
           + cell("Movimento",item.kind === "unload" ? "Scarico" : "Carico")
           + cell("Operatore",escape(item.actor)) + cell("Quantità",format(item.amount),"numeric")
-          + cell("Note",escape(item.notes),"notes-cell");
+          + cell("Note",escape(item.notes),"notes-cell")
+          + (movementActions ? cell("Azioni",button("Elimina",`confirm-movement:${item.id}`,"article-delete"),"row-actions") : "");
       case "units":
         return cell("Unità di misura",`<strong>${name}</strong>`);
       case "customers":
@@ -405,6 +406,28 @@ function confirmArticleDelete(id) {
   dialog.querySelector(`[data-action="article:${id}"]`).focus();
 }
 
+function confirmMovement(id) {
+  const item = state.movements.find(movement => movement.id === id);
+  if (!item) return;
+  const load = item.kind !== "unload";
+  dialog.innerHTML = `<div class="dialog-heading"><h2 id="dialog-title">Eliminare il movimento?</h2>
+    <button class="icon-button" data-action="close" aria-label="Chiudi">${icon("close")}</button></div>
+    <form data-form="cancel-movement" data-id="${id}">
+      <div class="dialog-content">
+        <div class="delete-summary"><strong>${escape(item.name)}</strong>
+          <small>${load ? "Carico" : "Scarico"} · Quantità ${format(item.amount)}</small></div>
+        <p>${load ? "Il profumo prodotto sarà sottratto dalla giacenza e gli articoli consumati saranno reintegrati."
+          : "La quantità scaricata sarà reintegrata nella giacenza del profumo."}</p>
+        <p class="form-error" role="alert" hidden></p>
+      </div>
+      <div class="dialog-actions">
+        <button class="button secondary" type="button" data-action="close" autofocus>Annulla</button>
+        <button class="button article-delete delete-confirm" type="submit">Conferma eliminazione</button>
+      </div>
+    </form>`;
+  dialog.showModal();
+}
+
 function updatePreview() {
   const purchase = dialog.querySelector('form[data-form="purchase"]');
   if (purchase) {
@@ -545,6 +568,7 @@ document.addEventListener("submit", async event => {
       unload: "Scarico registrato e giacenza aggiornata.",
       purchase: "Acquisto registrato e giacenza aggiornata.",
       "delete-article": "Articolo eliminato.",
+      "cancel-movement": "Movimento eliminato e giacenze aggiornate.",
     };
     if (action !== "login") notify(messages[action] || "Modifiche salvate.");
   } catch (error) {
@@ -588,6 +612,7 @@ document.addEventListener("click", async event => {
     catch (error) { notify(error.message); }
   } else if (action === "ledger") await openLedger(Number(id));
   else if (action === "confirm-article-delete") confirmArticleDelete(Number(id));
+  else if (action === "confirm-movement") confirmMovement(Number(id));
   else modal(action,Number(id));
 });
 

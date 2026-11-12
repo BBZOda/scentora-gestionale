@@ -19,7 +19,7 @@ DEMO = os.getenv("SCENTORA_DEMO") == "1"
 DB = os.getenv("SCENTORA_DB", str(ROOT / "scentora.sqlite"))
 SESSION_SECONDS = 12 * 3600
 PASSWORD_MIN = 5
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 SCALE = 1_000_000
 CENT = SCALE // 100
 MAX_VALUE = 1_000_000_000 * SCALE
@@ -136,6 +136,8 @@ def migrate_schema(db):
         db.execute("ALTER TABLE articles ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK(archived IN (0,1))")
     if version < 8:
         db.execute("ALTER TABLE accounting_details ADD COLUMN stock_applied INTEGER NOT NULL DEFAULT 0 CHECK(stock_applied IN (0,1))")
+    if version < 9:
+        db.execute("ALTER TABLE movements ADD COLUMN cancelled INTEGER NOT NULL DEFAULT 0 CHECK(cancelled IN (0,1))")
     db.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
 
@@ -272,7 +274,8 @@ def state(db, user):
                                   FROM accounting_details d JOIN contact_movements m ON m.id=d.movement_id
                                   JOIN contacts c ON c.id=m.contact_id ORDER BY m.occurred_on DESC,m.id DESC"""),
         "movements": rows(db, """SELECT m.id,p.name,m.amount,m.created,m.actor,m.occurred_on,m.kind,m.notes
-                                 FROM movements m JOIN perfumes p ON p.id=m.perfume ORDER BY m.id DESC LIMIT 100"""),
+                                 FROM movements m JOIN perfumes p ON p.id=m.perfume
+                                 WHERE m.cancelled=0 ORDER BY m.id DESC LIMIT 100"""),
         "users": rows(db, "SELECT id,name,role,active FROM users ORDER BY name COLLATE NOCASE")
         if user["role"] == "admin" else [],
     }
@@ -403,6 +406,35 @@ def produce(db, data, user):
     db.execute("UPDATE perfumes SET stock=stock+? WHERE id=?", (quantity, perfume_id))
     db.execute("INSERT INTO movements(perfume,amount,actor,recipe,occurred_on) VALUES (?,?,?,?,?)",
                (perfume_id, quantity, user["name"], json.dumps(recipe), day))
+
+
+def cancel_movement(db, data):
+    movement_id = integer(data.get("id"))
+    movement = get_row(db, "SELECT * FROM movements WHERE id=?", (movement_id,))
+    if movement["cancelled"]:
+        return
+    perfume = get_row(db, "SELECT stock FROM perfumes WHERE id=?", (movement["perfume"],))
+    quantity = movement["amount"]
+    if movement["kind"] == "load":
+        new_stock = perfume["stock"] - quantity
+        if new_stock < 0:
+            raise Problem("Giacenza del profumo insufficiente per annullare il carico.", "409 Conflict")
+        for line in json.loads(movement["recipe"]):
+            article = get_row(db, """SELECT a.stock,a.archived,u.name AS unit FROM articles a
+                                     JOIN units u ON u.id=a.unit WHERE a.id=?""", (line["id"],))
+            if article["archived"] or article["unit"] != line["unit"]:
+                raise Problem(f"Impossibile reintegrare {line['name']}: articolo eliminato o unità di misura cambiata.",
+                              "409 Conflict")
+            restored = article["stock"] + line["required"]
+            if restored > MAX_VALUE:
+                raise Problem("Il ripristino supera il limite di giacenza di un articolo.", "409 Conflict")
+            db.execute("UPDATE articles SET stock=? WHERE id=?", (restored, line["id"]))
+    else:
+        new_stock = perfume["stock"] + quantity
+        if new_stock > MAX_VALUE:
+            raise Problem("Il ripristino supera il limite di giacenza del profumo.", "409 Conflict")
+    db.execute("UPDATE perfumes SET stock=? WHERE id=?", (new_stock, movement["perfume"]))
+    db.execute("UPDATE movements SET cancelled=1 WHERE id=?", (movement_id,))
 
 
 def unload_perfume(db, data, user):
@@ -647,6 +679,8 @@ def api(env, path, method):
             produce(db, data, user)
         elif action == "unload":
             unload_perfume(db, data, user)
+        elif action == "cancel-movement":
+            cancel_movement(db, data)
         elif action == "contact":
             save_contact(db, data)
         elif action in ("receipt", "purchase"):
