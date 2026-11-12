@@ -19,6 +19,7 @@ DEMO = os.getenv("SCENTORA_DEMO") == "1"
 DB = os.getenv("SCENTORA_DB", str(ROOT / "scentora.sqlite"))
 SESSION_SECONDS = 12 * 3600
 PASSWORD_MIN = 5
+SCHEMA_VERSION = 2
 SCALE = 1_000_000
 CENT = SCALE // 100
 MAX_VALUE = 1_000_000_000 * SCALE
@@ -92,8 +93,6 @@ def connect(path):
 
 
 def migrate_accounting(db):
-    if db.execute("PRAGMA user_version").fetchone()[0] >= 1:
-        return
     exists = db.execute("SELECT 1 FROM sqlite_schema WHERE type='table' AND name='accounting_details'").fetchone()
     if exists:
         db.execute("ALTER TABLE accounting_details RENAME TO accounting_details_previous")
@@ -102,14 +101,23 @@ def migrate_accounting(db):
         columns = "movement_id,perfume_id,article_id,unit,unit_cost,quantity,notes,request_key,request_hash"
         db.execute(f"INSERT INTO accounting_details ({columns}) SELECT {columns} FROM accounting_details_previous")
         db.execute("DROP TABLE accounting_details_previous")
-    db.execute("PRAGMA user_version = 1")
+
+
+def migrate_schema(db):
+    version = db.execute("PRAGMA user_version").fetchone()[0]
+    if version >= SCHEMA_VERSION:
+        return
+    if version < 1:
+        migrate_accounting(db)
+    db.execute("ALTER TABLE articles ADD COLUMN scentora_perfume_id INTEGER REFERENCES perfumes(id)")
+    db.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
 
 def initialize(path, demo=False):
     with closing(connect(path)) as db, db:
         db.executescript(SCHEMA)
         db.execute("BEGIN IMMEDIATE")
-        migrate_accounting(db)
+        migrate_schema(db)
         db.executemany("INSERT OR IGNORE INTO units(name) VALUES (?)", [("ml.",), ("pz.",), ("l.",)])
         if db.execute("SELECT 1 FROM users LIMIT 1").fetchone():
             return
@@ -243,10 +251,17 @@ def save_article(db, data):
                 "SELECT 1 FROM recipes WHERE article=?", (article_id,)).fetchone()):
             raise Problem("L’unità è già utilizzata. Crea un nuovo articolo per usare un’altra unità.")
         stock = article["stock"]
-    replace_record(db, "articles", data.get("id"), {
+    fields = {
         "code": field(data, "codice", 40), "name": field(data, "descrizione"),
         "unit": unit, "cost": amount(data.get("cost") or 0), "stock": stock,
-    })
+    }
+    if "scentora_perfume_id" in data:
+        perfume_id = data["scentora_perfume_id"]
+        if perfume_id is not None:
+            perfume_id = integer(perfume_id)
+            get_row(db, "SELECT id FROM perfumes WHERE id=?", (perfume_id,))
+        fields["scentora_perfume_id"] = perfume_id
+    replace_record(db, "articles", data.get("id"), fields)
 
 
 def adjust_stock(db, data):
@@ -458,9 +473,9 @@ def api(env, path, method):
     else:
         path_db = DB
     with closing(connect(path_db)) as db, db:
-        if DEMO and db.execute("PRAGMA user_version").fetchone()[0] == 0:
+        if DEMO and db.execute("PRAGMA user_version").fetchone()[0] < SCHEMA_VERSION:
             db.execute("BEGIN IMMEDIATE")
-            migrate_accounting(db)
+            migrate_schema(db)
             db.commit()
         if method == "POST":
             data = read_json(env)

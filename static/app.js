@@ -196,7 +196,7 @@ function table(key, items) {
       <span>${query ? "Prova un altro termine di ricerca." : messages[key]}</span></div>`;
   }
   const headings = {
-    articles:["Codice","Descrizione","Unità","Costo unitario","Giacenza","Azioni"],
+    articles:["Codice","Descrizione Equivalenza","Profumo Scentora","Unità","Costo unitario","Giacenza","Azioni"],
     perfumes:["Profumo","Unità","Costo distinta","Prezzo vendita","Giacenza","Azioni"],
     movements:["Profumo","Data e ora","Operatore","Quantità"],
     customers:["Nome","Indirizzo","Città","Telefono","Contabile","Azioni"],
@@ -210,7 +210,9 @@ function table(key, items) {
     const name = escape(item.name);
     switch (key) {
       case "articles":
-        return cell("Codice",`<span class="code">${escape(item.code)}</span>`) + cell("Descrizione",`<strong>${name}</strong>`)
+        return cell("Codice",`<span class="code">${escape(item.code)}</span>`)
+          + cell("Descrizione Equivalenza",`<strong>${name}</strong>`)
+          + cell("Profumo Scentora",escape(state.perfumes.find(perfume => perfume.id === item.scentora_perfume_id)?.name))
           + cell("Unità",escape(unit(item.unit))) + cell("Costo unitario",euro(item.cost),"numeric")
           + cell("Giacenza",`<span class="stock ${item.stock ? "" : "zero"}">${format(item.stock)}</span>`,"numeric")
           + cell("Azioni",button("Movimenta",`stock:${item.id}`,"inline") + button("Modifica",`article:${item.id}`,"inline"),"row-actions");
@@ -277,7 +279,9 @@ function modal(action,id) {
     case "article":
       title = item ? "Modifica articolo" : "Nuovo articolo di base";
       fields = `<div class="form-grid">${input("Codice","codice",item?.code,'required maxlength="40"')}
-        ${input("Descrizione","descrizione",item?.name,'required maxlength="120"')}${units(item?.unit)}
+        ${input("Descrizione Equivalenza","descrizione",item?.name,'required maxlength="120"')}
+        ${select("Profumo Scentora","scentora_perfume_id",options(state.perfumes,item?.scentora_perfume_id),false)}
+        ${units(item?.unit)}
         ${numericInput("Costo unitario (€)","cost",item?.cost)}
         ${item ? "" : numericInput("Giacenza iniziale","stock",null,false)}</div>`;
       break;
@@ -398,6 +402,9 @@ function formData(form) {
   const data = Object.fromEntries(new FormData(form));
   if (form.dataset.id) data.id = Number(form.dataset.id);
   if (data.unit) data.unit = Number(data.unit);
+  if (action === "article") {
+    data.scentora_perfume_id = data.scentora_perfume_id ? Number(data.scentora_perfume_id) : null;
+  }
   if (action === "produce") data.id = Number(data.perfume);
   if (action === "user") data.active = data.active === "true";
   if (action === "customer" || action === "supplier") data.kind = action;
