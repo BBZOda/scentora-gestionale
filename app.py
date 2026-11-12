@@ -7,6 +7,7 @@ import re
 import secrets
 import sqlite3
 from contextlib import closing
+from datetime import date
 from decimal import Decimal, InvalidOperation
 from http.cookies import SimpleCookie
 from pathlib import Path
@@ -19,6 +20,7 @@ DB = os.getenv("SCENTORA_DB", str(ROOT / "scentora.sqlite"))
 SESSION_SECONDS = 12 * 3600
 PASSWORD_MIN = 5
 SCALE = 1_000_000
+CENT = SCALE // 100
 MAX_VALUE = 1_000_000_000 * SCALE
 ASSETS = {"/": ("index.html", "text/html"), "/app.css": ("app.css", "text/css"),
           "/app.js": ("app.js", "text/javascript")}
@@ -55,6 +57,15 @@ CREATE TABLE IF NOT EXISTS contact_movements (
  occurred_on TEXT NOT NULL, description TEXT NOT NULL, amount INTEGER NOT NULL CHECK(amount > 0));
 CREATE INDEX IF NOT EXISTS contact_movements_contact
  ON contact_movements(contact_id, occurred_on DESC, id DESC);
+CREATE TABLE IF NOT EXISTS accounting_details (
+ movement_id INTEGER PRIMARY KEY REFERENCES contact_movements(id),
+ perfume_id INTEGER REFERENCES perfumes(id), article_id INTEGER REFERENCES articles(id),
+ unit TEXT, unit_cost INTEGER, quantity INTEGER, notes TEXT NOT NULL,
+ request_key TEXT NOT NULL UNIQUE, request_hash TEXT NOT NULL,
+ CHECK((perfume_id IS NOT NULL AND article_id IS NULL AND unit IS NULL
+        AND unit_cost IS NULL AND quantity IS NULL)
+       OR (perfume_id IS NULL AND article_id IS NOT NULL AND unit IS NOT NULL
+           AND unit_cost > 0 AND quantity > 0)));
 """
 
 
@@ -192,6 +203,10 @@ def state(db, user):
         "recipes": rows(db, "SELECT * FROM recipes ORDER BY perfume,article"),
         "customers": rows(db, "SELECT * FROM contacts WHERE kind='customer' ORDER BY name COLLATE NOCASE,id"),
         "suppliers": rows(db, "SELECT * FROM contacts WHERE kind='supplier' ORDER BY name COLLATE NOCASE,id"),
+        "accounting": rows(db, """SELECT m.id,m.occurred_on,m.description,m.amount,c.name AS contact,
+                                  c.kind,d.unit,d.unit_cost,d.quantity,d.notes
+                                  FROM accounting_details d JOIN contact_movements m ON m.id=d.movement_id
+                                  JOIN contacts c ON c.id=m.contact_id ORDER BY m.occurred_on DESC,m.id DESC"""),
         "movements": rows(db, """SELECT m.id,p.name,m.amount,m.created,m.actor
                                  FROM movements m JOIN perfumes p ON p.id=m.perfume ORDER BY m.id DESC LIMIT 100"""),
         "users": rows(db, "SELECT id,name,role,active FROM users ORDER BY name COLLATE NOCASE")
@@ -304,6 +319,59 @@ def save_contact(db, data):
     replace_record(db, "contacts", contact_id, fields)
 
 
+def record_accounting(db, data, kind):
+    key = data.get("request_key")
+    if not isinstance(key, str) or not re.fullmatch(r"[a-f0-9-]{36}", key):
+        raise Problem("Riapri la maschera per registrare il movimento.")
+    fingerprint = hashlib.sha256(json.dumps([kind, data], sort_keys=True).encode()).hexdigest()
+    previous = db.execute("SELECT request_hash FROM accounting_details WHERE request_key=?", (key,)).fetchone()
+    if previous:
+        if previous["request_hash"] != fingerprint:
+            raise Problem("Il movimento è già stato registrato. Chiudi e riapri la maschera per inserirne un altro.",
+                          "409 Conflict")
+        return
+    try:
+        day = date.fromisoformat(data.get("data", ""))
+        if day.isoformat() != data["data"]:
+            raise ValueError()
+    except (TypeError, ValueError):
+        raise Problem("Inserisci una data valida.")
+    notes = data.get("note", "")
+    if not isinstance(notes, str) or len(notes) > 1000:
+        raise Problem("Le note possono contenere al massimo 1.000 caratteri.")
+    contact_id = integer(data.get("contact"))
+    get_row(db, "SELECT id FROM contacts WHERE id=? AND kind=?", (contact_id, kind))
+    perfume_id = article_id = unit = unit_cost = quantity = None
+    if kind == "customer":
+        perfume_id = integer(data.get("perfume"))
+        perfume = get_row(db, "SELECT name FROM perfumes WHERE id=?", (perfume_id,))
+        description = perfume["name"]
+        total = amount(data.get("amount"), positive=True)
+        if total % CENT:
+            raise Problem("Inserisci un importo con al massimo due decimali.")
+    else:
+        article_id = integer(data.get("article"))
+        article = get_row(db, """SELECT a.code,a.name,a.cost,a.unit,u.name AS unit_name FROM articles a
+                                 JOIN units u ON u.id=a.unit WHERE a.id=?""", (article_id,))
+        description = f"{article['code']} · {article['name']}"
+        unit = article["unit_name"]
+        unit_cost = article["cost"]
+        if not unit_cost:
+            raise Problem("Imposta un costo unitario positivo nella scheda dell’articolo di base.")
+        if amount(data.get("unit_cost")) != unit_cost or integer(data.get("unit")) != article["unit"]:
+            raise Problem("Costo o unità sono cambiati. Aggiorna la pagina e riprova.", "409 Conflict")
+        quantity = amount(data.get("quantity"), positive=True)
+        check_unit(db, article["unit"], quantity)
+        total = ((unit_cost * quantity + SCALE * CENT // 2) // (SCALE * CENT)) * CENT
+        if not 0 < total <= MAX_VALUE:
+            raise Problem("Il totale dell’acquisto deve essere almeno 0,01 € e rientrare nel limite consentito.")
+    movement = db.execute("INSERT INTO contact_movements(contact_id,occurred_on,description,amount) VALUES (?,?,?,?)",
+                          (contact_id, day.isoformat(), description, total)).lastrowid
+    db.execute("""INSERT INTO accounting_details(movement_id,perfume_id,article_id,unit,unit_cost,quantity,notes,
+                  request_key,request_hash) VALUES (?,?,?,?,?,?,?,?,?)""",
+               (movement, perfume_id, article_id, unit, unit_cost, quantity, notes.strip(), key, fingerprint))
+
+
 def save_user(db, data, user):
     target = data.get("id")
     role = data.get("role")
@@ -392,8 +460,9 @@ def api(env, path, method):
             contact_id = integer(int(ledger[1]))
             db.execute("BEGIN")
             get_row(db, "SELECT id FROM contacts WHERE id=?", (contact_id,))
-            movements = rows(db, """SELECT occurred_on,description,amount FROM contact_movements
-                                   WHERE contact_id=? ORDER BY occurred_on DESC,id DESC""", (contact_id,))
+            movements = rows(db, """SELECT m.occurred_on,m.description,m.amount,d.notes FROM contact_movements m
+                                   LEFT JOIN accounting_details d ON d.movement_id=m.id
+                                   WHERE m.contact_id=? ORDER BY m.occurred_on DESC,m.id DESC""", (contact_id,))
             return {"movements": movements}, "200 OK", headers
         if method != "POST":
             raise Problem("Pagina non trovata.", "404 Not Found")
@@ -411,6 +480,8 @@ def api(env, path, method):
             produce(db, data, user)
         elif action == "contact":
             save_contact(db, data)
+        elif action in ("receipt", "purchase"):
+            record_accounting(db, data, "customer" if action == "receipt" else "supplier")
         elif action == "unit":
             if user["role"] != "admin":
                 raise Problem("Operazione riservata agli amministratori.", "403 Forbidden")

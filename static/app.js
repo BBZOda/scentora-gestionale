@@ -10,6 +10,8 @@ const sections = {
   movements: ["Produzione", "clock"],
   customers: ["Clienti", "users"],
   suppliers: ["Fornitori", "box"],
+  receipts: ["Incassi", "wallet"],
+  purchases: ["Acquisto Articoli", "wallet"],
   units: ["Elenchi", "list"],
   users: ["Utenti", "users"],
 };
@@ -26,16 +28,22 @@ const paths = {
   menu: '<path d="M4 6h16M4 12h16M4 18h16"/>',
   close: '<path d="m6 6 12 12M18 6 6 18"/>',
   logout: '<path d="M11 4H5v16h6m4-12 4 4-4 4m4-4H9"/>',
+  wallet: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 9h18m-5 5h2"/>',
 };
 const icon = name => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[name]}</svg>`;
 const mark = '<svg viewBox="0 0 40 40" fill="none" aria-hidden="true"><path d="M20 4c0 9 7 16 16 16-9 0-16 7-16 16 0-9-7-16-16-16 9 0 16-7 16-16Z" stroke="currentColor"/><path d="M20 11c0 5 4 9 9 9-5 0-9 4-9 9 0-5-4-9-9-9 5 0 9-4 9-9Z" stroke="currentColor"/></svg>';
 const escape = value => String(value ?? "").replace(/[&<>"']/g, ch => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]));
 const scale = 1e6;
+const cent = scale / 100;
+const purchaseDivisor = BigInt(scale) * BigInt(cent);
 const number = new Intl.NumberFormat("it-IT", {maximumFractionDigits: 6});
 const money = new Intl.NumberFormat("it-IT", {style:"currency", currency:"EUR", maximumFractionDigits: 6});
 const date = new Intl.DateTimeFormat("it-IT", {dateStyle:"short", timeStyle:"short", timeZone:"Europe/Rome"});
 const format = value => number.format(value / scale);
 const euro = value => money.format(value / scale);
+const shortDate = value => value.split("-").reverse().join("/");
+const today = new Intl.DateTimeFormat("sv-SE", {timeZone:"Europe/Rome", dateStyle:"short"});
+const accountingSection = key => key === "receipts" || key === "purchases";
 let state;
 let query = "";
 let navOpen = false;
@@ -43,6 +51,7 @@ let notificationTimer;
 
 function section() {
   const key = location.hash.slice(1);
+  if (key === "accounting") return "receipts";
   return Object.hasOwn(sections,key) && (key !== "users" || state?.user.role === "admin") ? key : "dashboard";
 }
 const unit = id => state.units.find(item => item.id === id)?.name ?? "";
@@ -102,8 +111,12 @@ function renderLogin() {
 
 function render() {
   const current = section();
-  const links = Object.entries(sections).filter(([key]) => key !== "users" || state.user.role === "admin")
-    .map(([key,[label,symbol]]) => `<a href="#${key}" ${current === key ? 'aria-current="page"' : ""}>${icon(symbol)}${label}</a>`).join("");
+  const links = Object.entries(sections).filter(([key]) => key !== "purchases" && (key !== "users" || state.user.role === "admin"))
+    .map(([key,[label,symbol]]) => {
+      const accounting = key === "receipts";
+      const active = current === key || (accounting && accountingSection(current));
+      return `<a href="#${accounting ? "accounting" : key}" ${active ? 'aria-current="page"' : ""}>${icon(symbol)}${accounting ? "Gestione Contabilità" : label}</a>`;
+    }).join("");
   root.innerHTML = `<div class="shell">
     <aside id="sidebar" class="sidebar ${navOpen ? "open" : ""}">${brand}
       <nav aria-label="Menu principale">${links}</nav>
@@ -146,6 +159,8 @@ const settings = {
   movements: ["Consulta gli ultimi 100 carichi di produzione.", "Carica profumo", "produce", "Cerca per profumo o operatore"],
   customers: ["Consulta le anagrafiche e i movimenti di incasso.", "Nuovo cliente", "customer", "Cerca per nome, città o telefono"],
   suppliers: ["Consulta le anagrafiche e i movimenti di spesa.", "Nuovo fornitore", "supplier", "Cerca per nome, città, nazione o telefono"],
+  receipts: ["Registra gli incassi dei clienti.", "Nuovo incasso", "receipt", "Cerca per cliente, profumo o note"],
+  purchases: ["Registra gli acquisti dai fornitori.", "Nuovo acquisto", "purchase", "Cerca per fornitore, articolo o note"],
   units: ["Unità di misura disponibili nelle schede.", "Nuova unità", "unit", "Cerca un’unità"],
   users: ["Gestisci gli account e i ruoli di accesso.", "Nuovo utente", "user", "Cerca un utente"],
 };
@@ -156,12 +171,17 @@ function listing(key) {
   return `<div class="page-heading"><div><h1>${sections[key][0]}</h1><p>${description}</p></div>
     <div class="actions">${key === "perfumes" ? button("Carica profumo","produce") : ""}
     ${canCreate ? button(label,action,"primary","plus") : ""}</div></div>
+    ${accountingSection(key) ? `<nav class="accounting-nav" aria-label="Gestione Contabilità">${["receipts","purchases"].map(tab =>
+      `<a href="#${tab}" ${tab === key ? 'aria-current="page"' : ""}>${sections[tab][0]}</a>`).join("")}</nav>` : ""}
     <section class="panel"><div class="panel-heading"><label class="search">${icon("search")}<input type="search" id="search" aria-label="${placeholder}" placeholder="${placeholder}" value="${escape(query)}"></label><span class="count" id="count" aria-live="polite"></span></div>
     <div id="results">${table(key,filtered(key))}</div></section>`;
 }
 
 function filtered(key) {
-  return state[key].filter(item => [item.name,item.code,item.actor,item.city,item.country,item.phone].some(value =>
+  const entries = accountingSection(key) ? state.accounting.filter(item =>
+    item.kind === (key === "receipts" ? "customer" : "supplier")) : state[key];
+  return entries.filter(item => [item.name,item.code,item.actor,item.city,item.country,item.phone,
+    item.contact,item.description,item.notes].some(value =>
     String(value ?? "").toLocaleLowerCase("it").includes(query.trim().toLocaleLowerCase("it"))));
 }
 
@@ -170,7 +190,8 @@ function table(key, items) {
   if (!items.length) {
     const messages = {articles:"Aggiungi il primo articolo di base.", perfumes:"Crea un profumo con la sua distinta base.",
       movements:"I carichi confermati compariranno qui.", units:"Aggiungi un’unità di misura.", users:"Crea il primo utente.",
-      customers:"Aggiungi il primo cliente.", suppliers:"Aggiungi il primo fornitore."};
+      customers:"Aggiungi il primo cliente.", suppliers:"Aggiungi il primo fornitore.",
+      receipts:"Registra il primo incasso.", purchases:"Registra il primo acquisto."};
     return `<div class="empty"><span class="metric-icon">${icon(sections[key][1])}</span><strong>${query ? "Nessun risultato" : "Nessuna voce da mostrare"}</strong>
       <span>${query ? "Prova un altro termine di ricerca." : messages[key]}</span></div>`;
   }
@@ -180,6 +201,8 @@ function table(key, items) {
     movements:["Profumo","Data e ora","Operatore","Quantità"],
     customers:["Nome","Indirizzo","Città","Telefono","Contabile","Azioni"],
     suppliers:["Nome","Indirizzo","Città","Nazione","Telefono","Contabile","Azioni"],
+    receipts:["Data","Cliente","Profumo","Importo","Note"],
+    purchases:["Data","Fornitore","Articolo di base","Costo unitario","Unità di misura","Quantità","Totale","Note"],
     units:["Unità di misura"],
     users:["Utente","Ruolo","Stato","Azioni"],
   }[key];
@@ -208,6 +231,15 @@ function table(key, items) {
           + cell("Telefono",escape(item.phone))
           + cell("Contabile",button("Contabile",`ledger:${item.id}`,"inline"))
           + cell("Azioni",button("Modifica",`${item.kind}:${item.id}`,"inline"),"row-actions");
+      case "receipts":
+      case "purchases":
+        return cell("Data",shortDate(item.occurred_on))
+          + cell(key === "receipts" ? "Cliente" : "Fornitore",`<strong>${escape(item.contact)}</strong>`)
+          + cell(key === "receipts" ? "Profumo" : "Articolo di base",escape(item.description))
+          + (key === "purchases" ? cell("Costo unitario",euro(item.unit_cost),"numeric")
+            + cell("Unità di misura",escape(item.unit)) + cell("Quantità",format(item.quantity),"numeric") : "")
+          + cell(key === "receipts" ? "Importo" : "Totale",euro(item.amount),"numeric")
+          + cell("Note",escape(item.notes),"notes-cell");
       default:
         return cell("Utente",`<strong>${name}</strong>`) + cell("Ruolo",item.role === "admin" ? "Amministratore" : "Operatore")
           + cell("Stato",`<span class="stock ${item.active ? "" : "zero"}">${item.active ? "Attivo" : "Disattivato"}</span>`)
@@ -283,6 +315,26 @@ function modal(action,id) {
         ${action === "supplier" ? input("Nazione","nazione",item?.country,'maxlength="100"') : ""}
         ${input("Telefono","telefono",item?.phone,'type="tel" maxlength="48"')}</div>`;
       break;
+    case "receipt":
+    case "purchase": {
+      const receipt = action === "receipt";
+      const contacts = receipt ? state.customers : state.suppliers;
+      const products = receipt ? state.perfumes : state.articles;
+      if (!contacts.length) return notify(receipt ? "Crea prima un cliente." : "Crea prima un fornitore.");
+      if (!products.length) return notify(receipt ? "Crea prima un profumo." : "Crea prima un articolo di base.");
+      title = receipt ? "Nuovo incasso" : "Nuovo acquisto articolo";
+      label = receipt ? "Registra incasso" : "Registra acquisto";
+      fields = `<div class="form-grid">${input("Data","data",today.format(new Date()),'type="date" required')}
+        ${select(receipt ? "Cliente" : "Fornitore","contact",options(contacts))}
+        ${receipt ? select("Profumo","perfume",options(products)) + numericInput("Importo (€)","amount")
+          : select("Articolo di base","article",options(products,null,item => item.code + " · " + item.name))
+            + input("Costo unitario (€)","display_cost","","readonly")
+            + input("Unità di misura","display_unit","","readonly")
+            + numericInput("Quantità","quantity")}</div>
+        ${receipt ? "" : '<p class="purchase-total" id="purchase-total" aria-live="polite"></p>'}
+        <label class="notes-field">Note<textarea name="note" rows="3" maxlength="1000"></textarea></label>`;
+      break;
+    }
     case "user":
       title = item ? "Modifica utente" : "Nuovo utente";
       fields = `<div class="form-grid">${input("Utente","utente",item?.name,'required maxlength="120"')}
@@ -296,11 +348,32 @@ function modal(action,id) {
       <div class="dialog-content">${fields}<p class="form-error" role="alert" hidden></p></div>
       <div class="dialog-actions">${button("Annulla","close")}<button class="button primary" type="submit">${label}</button></div>
     </form>`;
+  if (action === "receipt" || action === "purchase") {
+    dialog.querySelector("form").dataset.requestKey = crypto.randomUUID();
+  }
   dialog.showModal();
   updatePreview();
 }
 
 function updatePreview() {
+  const purchase = dialog.querySelector('form[data-form="purchase"]');
+  if (purchase) {
+    const item = article(Number(purchase.elements.article.value));
+    purchase.elements.display_cost.value = item ? euro(item.cost) : "";
+    purchase.elements.display_unit.value = item ? unit(item.unit) : "";
+    const preview = purchase.querySelector("#purchase-total");
+    const quantity = purchase.elements.quantity.value.trim().replace(",", ".");
+    const match = /^(\d*)(?:\.(\d{0,6}))?$/.exec(quantity);
+    preview.textContent = "";
+    if (item && !item.cost) preview.textContent = "Imposta il costo unitario nella scheda dell’articolo di base.";
+    else if (item && match && quantity && quantity !== ".") {
+      const scaled = BigInt((match[1] || "0") + (match[2] || "").padEnd(6,"0"));
+      const cents = (BigInt(item.cost) * scaled + purchaseDivisor / 2n) / purchaseDivisor;
+      if (scaled <= BigInt(1e9 * scale) && cents <= BigInt(1e9 * 100)) {
+        preview.textContent = `Totale acquisto ${euro(Number(cents) * cent)}`;
+      }
+    }
+  }
   dialog.querySelectorAll(".recipe-line").forEach(line => {
     const item = article(Number(line.querySelector("select").value));
     line.querySelector(".line-meta").textContent = item ? `${unit(item.unit)} · ${euro(item.cost)} per unità · ${format(item.stock)} disponibili` : "";
@@ -326,6 +399,19 @@ function formData(form) {
   if (action === "produce") data.id = Number(data.perfume);
   if (action === "user") data.active = data.active === "true";
   if (action === "customer" || action === "supplier") data.kind = action;
+  if (action === "receipt" || action === "purchase") {
+    data.contact = Number(data.contact);
+    data.request_key = form.dataset.requestKey;
+  }
+  if (action === "receipt") data.perfume = Number(data.perfume);
+  if (action === "purchase") {
+    data.article = Number(data.article);
+    const item = article(data.article);
+    data.unit = item?.unit;
+    data.unit_cost = item ? item.cost / scale : null;
+    delete data.display_cost;
+    delete data.display_unit;
+  }
   if (action === "perfume") data.recipe = [...form.querySelectorAll(".recipe-line")].map(line => ({
     article: Number(line.querySelector("select").value), amount: line.querySelector("input").value,
   }));
@@ -335,7 +421,7 @@ function formData(form) {
 async function openLedger(id) {
   const contact = [...state.customers, ...state.suppliers].find(item => item.id === id);
   if (!contact) return;
-  const category = contact.kind === "customer" ? "Incassi" : "Spese";
+  const category = contact.kind === "customer" ? "Incassi" : "Acquisto Articoli";
   dialog.innerHTML = `<div class="dialog-heading"><h2 id="dialog-title">Contabile · ${escape(contact.name)}</h2>
     <button class="icon-button" data-action="close" aria-label="Chiudi">${icon("close")}</button></div>
     <div class="dialog-content" id="ledger-content"><p role="status">Caricamento movimenti…</p></div>
@@ -346,9 +432,9 @@ async function openLedger(id) {
     const {movements} = await request(`contacts/${id}/ledger`);
     if (!dialog.open || !content.isConnected) return;
     content.innerHTML = movements.length ? `<div class="table-wrap" tabindex="0" role="region" aria-label="${category}">
-      <table><thead><tr><th scope="col">Data</th><th scope="col">Descrizione</th><th scope="col">Importo</th></tr></thead>
-      <tbody>${movements.map(item => `<tr>${cell("Data",escape(item.occurred_on.split("-").reverse().join("/")))}
-        ${cell("Descrizione",escape(item.description))}${cell("Importo",euro(item.amount),"numeric")}</tr>`).join("")}</tbody></table></div>`
+      <table><thead><tr><th scope="col">Data</th><th scope="col">Descrizione</th><th scope="col">Importo</th><th scope="col">Note</th></tr></thead>
+      <tbody>${movements.map(item => `<tr>${cell("Data",escape(shortDate(item.occurred_on)))}
+        ${cell("Descrizione",escape(item.description))}${cell("Importo",euro(item.amount),"numeric")}${cell("Note",escape(item.notes),"notes-cell")}</tr>`).join("")}</tbody></table></div>`
       : `<p><strong>Nessun movimento registrato.</strong></p><p>Qui compariranno i movimenti della sezione ${category} in Gestione Contabilità.</p>`;
   } catch (error) {
     if (!dialog.open || !content.isConnected) return;
