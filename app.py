@@ -19,7 +19,7 @@ DEMO = os.getenv("SCENTORA_DEMO") == "1"
 DB = os.getenv("SCENTORA_DB", str(ROOT / "scentora.sqlite"))
 SESSION_SECONDS = 12 * 3600
 PASSWORD_MIN = 5
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 SCALE = 1_000_000
 CENT = SCALE // 100
 MAX_VALUE = 1_000_000_000 * SCALE
@@ -134,6 +134,8 @@ def migrate_schema(db):
         db.execute("CREATE UNIQUE INDEX movements_request_key ON movements(request_key)")
     if version < 7:
         db.execute("ALTER TABLE articles ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK(archived IN (0,1))")
+    if version < 8:
+        db.execute("ALTER TABLE accounting_details ADD COLUMN stock_applied INTEGER NOT NULL DEFAULT 0 CHECK(stock_applied IN (0,1))")
     db.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
 
@@ -493,11 +495,44 @@ def record_accounting(db, data, kind):
         total = ((unit_cost * quantity + SCALE * CENT // 2) // (SCALE * CENT)) * CENT
         if not 0 < total <= MAX_VALUE:
             raise Problem("Il totale dell’acquisto deve essere almeno 0,01 € e rientrare nel limite consentito.")
+        adjust_stock(db, {"id": article_id, "amount": data["quantity"], "direction": "in"})
     movement = db.execute("INSERT INTO contact_movements(contact_id,occurred_on,description,amount) VALUES (?,?,?,?)",
                           (contact_id, day, description, total)).lastrowid
     db.execute("""INSERT INTO accounting_details(movement_id,perfume_id,article_id,unit,unit_cost,quantity,notes,
-                  request_key,request_hash) VALUES (?,?,?,?,?,?,?,?,?)""",
-               (movement, perfume_id, article_id, unit, unit_cost, quantity, notes.strip(), key, fingerprint))
+                  request_key,request_hash,stock_applied) VALUES (?,?,?,?,?,?,?,?,?,?)""",
+               (movement, perfume_id, article_id, unit, unit_cost, quantity, notes.strip(), key, fingerprint,
+                int(kind == "supplier")))
+
+
+def reconcile_purchase_stock(path):
+    payload = os.getenv("SCENTORA_PURCHASE_STOCK_RECONCILE")
+    if not payload:
+        return
+    data = json.loads(payload)
+    with closing(connect(path)) as db, db:
+        db.execute("BEGIN IMMEDIATE")
+        matches = rows(db, """SELECT d.movement_id,d.article_id,d.stock_applied,a.stock,a.archived,
+                                     u.name AS current_unit
+                              FROM accounting_details d JOIN contact_movements m ON m.id=d.movement_id
+                              JOIN contacts c ON c.id=m.contact_id JOIN articles a ON a.id=d.article_id
+                              JOIN units u ON u.id=a.unit
+                              WHERE a.code=? AND c.kind='supplier' AND c.name=? COLLATE NOCASE
+                              AND m.occurred_on=? AND d.quantity=? AND m.amount=? AND d.unit=?""",
+                       (data["code"], data["supplier"], movement_date(data["date"]),
+                        amount(data["quantity"], positive=True), amount(data["total"], positive=True), data["unit"]))
+        if len(matches) != 1:
+            print("Recupero carico: acquisto non identificato in modo univoco.", flush=True)
+            return
+        purchase = matches[0]
+        if purchase["stock_applied"]:
+            return
+        if purchase["stock"] != 0 or purchase["archived"] or purchase["current_unit"] != data["unit"]:
+            print("Recupero carico: giacenza, unità o stato articolo da verificare.", flush=True)
+            return
+        adjust_stock(db, {"id": purchase["article_id"], "amount": data["quantity"], "direction": "in"})
+        db.execute("UPDATE accounting_details SET stock_applied=1 WHERE movement_id=?", (purchase["movement_id"],))
+        stock = db.execute("SELECT stock FROM articles WHERE id=?", (purchase["article_id"],)).fetchone()[0]
+    print(f"Recupero carico: completato per {data['code']}, giacenza {Decimal(stock) / SCALE} {data['unit']}", flush=True)
 
 
 def save_user(db, data, user):
@@ -759,6 +794,7 @@ if not DEMO:
     import_articles(DB)
     import_perfumes(DB)
     apply_article_bulk_update(DB)
+    reconcile_purchase_stock(DB)
 
 if __name__ == "__main__":
     with make_server("0.0.0.0", int(os.getenv("PORT", "8000")), application) as server:

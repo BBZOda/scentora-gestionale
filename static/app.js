@@ -160,7 +160,7 @@ const settings = {
   customers: ["Consulta le anagrafiche e i movimenti di incasso.", "Nuovo cliente", "customer", "Cerca per nome, città o telefono"],
   suppliers: ["Consulta le anagrafiche e i movimenti di spesa.", "Nuovo fornitore", "supplier", "Cerca per nome, città, nazione o telefono"],
   receipts: ["Registra gli incassi dei clienti.", "Nuovo incasso", "receipt", "Cerca per cliente, profumo o note"],
-  purchases: ["Registra gli acquisti dai fornitori.", "Nuovo acquisto", "purchase", "Cerca per fornitore, articolo o note"],
+  purchases: ["Registra gli acquisti dai fornitori e aggiorna la giacenza degli articoli.", "Nuovo acquisto", "purchase", "Cerca per fornitore, articolo o note"],
   units: ["Unità di misura disponibili nelle schede.", "Nuova unità", "unit", "Cerca un’unità"],
   users: ["Gestisci gli account e i ruoli di accesso.", "Nuovo utente", "user", "Cerca un utente"],
 };
@@ -520,6 +520,7 @@ document.addEventListener("submit", async event => {
     const messages = {
       produce: "Carico registrato e magazzino aggiornato.",
       unload: "Scarico registrato e giacenza aggiornata.",
+      purchase: "Acquisto registrato e giacenza aggiornata.",
       "delete-article": "Articolo eliminato.",
     };
     if (action !== "login") notify(messages[action] || "Modifiche salvate.");
