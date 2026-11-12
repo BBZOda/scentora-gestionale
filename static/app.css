@@ -199,6 +199,7 @@ form[data-form="perfume"] input[name="profumo"] {
 }
 .form-error { border-radius: var(--radius); padding: 10px; background: #f5ded9; color: var(--error); }
 fieldset { min-width: 0; margin: 16px 0 0; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius); }
+form[data-form="perfume"] fieldset { background: #e7efe2; border-color: #c8d6c1; }
 legend { padding-inline: 5px; font-weight: 700; font-size: 15px; }
 .recipe-line { display: grid; grid-template-columns: minmax(0,2fr) minmax(0,1fr) 44px; gap: 8px; align-items: end; padding-bottom: 12px; }
 .line-meta { grid-column: 1/-1; color: var(--muted); font-size: 13px; }
