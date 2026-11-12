@@ -227,7 +227,7 @@ function table(key, items, movementActions = key === "movements" && section() ==
         return cell("Profumo",`<strong>${name}</strong>`) + cell("Unità",escape(unit(item.unit)))
           + cell("Costo distinta",euro(cost(item.id)),"numeric") + cell("Prezzo vendita",saleMoney.format(item.price / scale),"numeric")
           + cell("Giacenza",format(item.stock),"numeric")
-          + cell("Azioni",button("Carica",`produce:${item.id}`,"inline") + button("Distinta Art.",`perfume:${item.id}`,"inline"),"row-actions");
+          + cell("Azioni",button("Carica",`produce:${item.id}`,"inline perfume-load") + button("Distinta Art.",`perfume:${item.id}`,"inline"),"row-actions");
       case "movements":
         return cell("Profumo",`<strong>${name}</strong>`) + cell("Data",
           escape(shortDate(item.occurred_on ?? today.format(new Date(item.created.replace(" ","T")+"Z")))))
