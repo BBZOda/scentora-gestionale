@@ -139,7 +139,7 @@ function render() {
 function dashboard() {
   const counts = [["Articoli di base", state.articles.length, "articles", "box"],
     ["Profumi a catalogo", state.perfumes.length, "perfumes", "bottle"],
-    ["Carichi registrati", state.movements.length >= 100 ? "100+" : state.movements.length, "movements", "clock"]];
+    ["Movimenti registrati", state.movements.length >= 100 ? "100+" : state.movements.length, "movements", "clock"]];
   return `<section class="hero">
       <div class="hero-art" aria-hidden="true"><i></i><i></i><i></i>${mark}</div>
       <div class="hero-content"><p class="eyebrow">SCENTORA / PRODUZIONE</p><h1>Panoramica</h1>
@@ -149,14 +149,14 @@ function dashboard() {
     <section class="metrics" aria-label="Riepilogo">${counts.map(([label,value,link,symbol]) => `<a class="metric" href="#${link}">
       <span class="metric-icon">${icon(symbol)}</span><span class="metric-label">${label}</span><strong>${value}</strong><span class="metric-arrow">${icon("arrow")}</span>
     </a>`).join("")}</section>
-    <section class="panel"><div class="panel-heading"><h2>Ultimi carichi</h2><a class="text-link" href="#movements">Vedi produzione ${icon("arrow")}</a></div>
+    <section class="panel"><div class="panel-heading"><h2>Ultimi movimenti</h2><a class="text-link" href="#movements">Vedi produzione ${icon("arrow")}</a></div>
     ${table("movements", state.movements.slice(0,5))}</section>`;
 }
 
 const settings = {
   articles: ["Gestisci codici, costi e disponibilità di magazzino.", "Nuovo articolo", "article", "Cerca per codice o descrizione"],
   perfumes: ["Consulta il catalogo e configura le distinte base.", "Nuovo profumo", "perfume", "Cerca un profumo"],
-  movements: ["Consulta gli ultimi 100 carichi di produzione.", "Carica profumo", "produce", "Cerca per profumo o operatore"],
+  movements: ["Consulta gli ultimi 100 carichi e scarichi di profumi.", "Carica profumo", "produce", "Cerca per profumo, operatore o note"],
   customers: ["Consulta le anagrafiche e i movimenti di incasso.", "Nuovo cliente", "customer", "Cerca per nome, città o telefono"],
   suppliers: ["Consulta le anagrafiche e i movimenti di spesa.", "Nuovo fornitore", "supplier", "Cerca per nome, città, nazione o telefono"],
   receipts: ["Registra gli incassi dei clienti.", "Nuovo incasso", "receipt", "Cerca per cliente, profumo o note"],
@@ -169,7 +169,8 @@ function listing(key) {
   const [description,label,action,placeholder] = settings[key];
   const canCreate = key !== "units" || state.user.role === "admin";
   return `<div class="page-heading"><div><h1>${sections[key][0]}</h1><p>${description}</p></div>
-    <div class="actions">${key === "perfumes" ? button("Carica profumo","produce") : ""}
+    <div class="actions">${key === "perfumes" ? button("Scarica profumo","unload","perfume-unload")
+      + button("Carica profumo","produce","perfume-load") : ""}
     ${canCreate ? button(label,action,"primary","plus") : ""}</div></div>
     ${accountingSection(key) ? `<nav class="accounting-nav" aria-label="Gestione Contabilità">${["receipts","purchases"].map(tab =>
       `<a href="#${tab}" ${tab === key ? 'aria-current="page"' : ""}>${sections[tab][0]}</a>`).join("")}</nav>` : ""}
@@ -189,7 +190,7 @@ const cell = (label,value,style = "") => `<td data-label="${label}" class="${sty
 function table(key, items) {
   if (!items.length) {
     const messages = {articles:"Aggiungi il primo articolo di base.", perfumes:"Crea un profumo con la sua distinta base.",
-      movements:"I carichi confermati compariranno qui.", units:"Aggiungi un’unità di misura.", users:"Crea il primo utente.",
+      movements:"I movimenti confermati compariranno qui.", units:"Aggiungi un’unità di misura.", users:"Crea il primo utente.",
       customers:"Aggiungi il primo cliente.", suppliers:"Aggiungi il primo fornitore.",
       receipts:"Registra il primo incasso.", purchases:"Registra il primo acquisto."};
     return `<div class="empty"><span class="metric-icon">${icon(sections[key][1])}</span><strong>${query ? "Nessun risultato" : "Nessuna voce da mostrare"}</strong>
@@ -198,7 +199,7 @@ function table(key, items) {
   const headings = {
     articles:["Codice","Descrizione Articolo","Profumo Scentora","Unità","Costo unitario","Giacenza","Azioni","Fornitore"],
     perfumes:["Profumo","Unità","Costo distinta","Prezzo vendita","Giacenza","Azioni"],
-    movements:["Profumo","Data carico","Operatore","Quantità"],
+    movements:["Profumo","Data","Movimento","Operatore","Quantità","Note"],
     customers:["Nome","Indirizzo","Città","Telefono","Contabile","Azioni"],
     suppliers:["Nome","Indirizzo","Città","Nazione","Telefono","Contabile","Azioni"],
     receipts:["Data","Cliente","Profumo","Importo","Note"],
@@ -224,9 +225,11 @@ function table(key, items) {
           + cell("Giacenza",format(item.stock),"numeric")
           + cell("Azioni",button("Carica",`produce:${item.id}`,"inline") + button("Distinta Art.",`perfume:${item.id}`,"inline"),"row-actions");
       case "movements":
-        return cell("Profumo",`<strong>${name}</strong>`) + cell("Data carico",
+        return cell("Profumo",`<strong>${name}</strong>`) + cell("Data",
           escape(shortDate(item.occurred_on ?? today.format(new Date(item.created.replace(" ","T")+"Z")))))
-          + cell("Operatore",escape(item.actor)) + cell("Quantità",format(item.amount),"numeric");
+          + cell("Movimento",item.kind === "unload" ? "Scarico" : "Carico")
+          + cell("Operatore",escape(item.actor)) + cell("Quantità",format(item.amount),"numeric")
+          + cell("Note",escape(item.notes),"notes-cell");
       case "units":
         return cell("Unità di misura",`<strong>${name}</strong>`);
       case "customers":
@@ -312,6 +315,16 @@ function modal(action,id) {
         ${select("Profumo","perfume",options(state.perfumes,id || (state.perfumes.length === 1 ? state.perfumes[0].id : null)))}
         ${numericInput("Quantità da caricare","amount")}</div><div id="production-preview" aria-live="polite"></div>`;
       break;
+    case "unload":
+      if (!state.perfumes.length) return notify("Crea prima un profumo.");
+      title = "Scarica profumo";
+      label = "Conferma scarico";
+      fields = `<div class="form-grid">${input("Data","data",today.format(new Date()),'type="date" required')}
+        ${select("Profumo","perfume",options(state.perfumes,state.perfumes.length === 1 ? state.perfumes[0].id : null,
+          item => `${item.name} · ${format(item.stock)} ${unit(item.unit)} disponibili`))}
+        ${numericInput("Quantità da scaricare","amount")}</div>
+        <label class="notes-field">Note<textarea name="note" rows="3" maxlength="1000"></textarea></label>`;
+      break;
     case "unit":
       title = "Nuova unità di misura";
       fields = input("Unità di misura","unità","","required maxlength=24");
@@ -359,7 +372,7 @@ function modal(action,id) {
       <div class="dialog-content">${fields}<p class="form-error" role="alert" hidden></p></div>
       <div class="dialog-actions">${button("Annulla","close")}<button class="button primary" type="submit">${label}</button></div>
     </form>`;
-  if (action === "receipt" || action === "purchase") {
+  if (action === "receipt" || action === "purchase" || action === "unload") {
     dialog.querySelector("form").dataset.requestKey = crypto.randomUUID();
   }
   dialog.showModal();
@@ -411,7 +424,8 @@ function formData(form) {
     data.scentora_perfume_id = data.scentora_perfume_id ? Number(data.scentora_perfume_id) : null;
     data.supplier_id = data.supplier_id ? Number(data.supplier_id) : null;
   }
-  if (action === "produce") data.id = Number(data.perfume);
+  if (action === "produce" || action === "unload") data.id = Number(data.perfume);
+  if (action === "unload") data.request_key = form.dataset.requestKey;
   if (action === "user") data.active = data.active === "true";
   if (action === "customer" || action === "supplier") data.kind = action;
   if (action === "receipt" || action === "purchase") {
@@ -479,7 +493,11 @@ document.addEventListener("submit", async event => {
     await request(data.kind ? "contact" : action, data);
     if (dialog.open) dialog.close();
     await refresh();
-    if (action !== "login") notify(action === "produce" ? "Carico registrato e magazzino aggiornato." : "Modifiche salvate.");
+    const messages = {
+      produce: "Carico registrato e magazzino aggiornato.",
+      unload: "Scarico registrato e giacenza aggiornata.",
+    };
+    if (action !== "login") notify(messages[action] || "Modifiche salvate.");
   } catch (error) {
     if (error.status === 401 && action !== "login") {
       if (dialog.open) dialog.close();

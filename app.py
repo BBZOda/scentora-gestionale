@@ -19,7 +19,7 @@ DEMO = os.getenv("SCENTORA_DEMO") == "1"
 DB = os.getenv("SCENTORA_DB", str(ROOT / "scentora.sqlite"))
 SESSION_SECONDS = 12 * 3600
 PASSWORD_MIN = 5
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 SCALE = 1_000_000
 CENT = SCALE // 100
 MAX_VALUE = 1_000_000_000 * SCALE
@@ -127,6 +127,11 @@ def migrate_schema(db):
             raise RuntimeError("Collegamenti non validi dopo la migrazione degli articoli.")
     if version < 5:
         db.execute("ALTER TABLE movements ADD COLUMN occurred_on TEXT")
+    if version < 6:
+        db.execute("ALTER TABLE movements ADD COLUMN kind TEXT NOT NULL DEFAULT 'load' CHECK(kind IN ('load','unload'))")
+        db.execute("ALTER TABLE movements ADD COLUMN notes TEXT NOT NULL DEFAULT ''")
+        db.execute("ALTER TABLE movements ADD COLUMN request_key TEXT")
+        db.execute("CREATE UNIQUE INDEX movements_request_key ON movements(request_key)")
     db.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
 
@@ -262,7 +267,7 @@ def state(db, user):
                                   c.kind,d.perfume_id,d.unit,d.unit_cost,d.quantity,d.notes
                                   FROM accounting_details d JOIN contact_movements m ON m.id=d.movement_id
                                   JOIN contacts c ON c.id=m.contact_id ORDER BY m.occurred_on DESC,m.id DESC"""),
-        "movements": rows(db, """SELECT m.id,p.name,m.amount,m.created,m.actor,m.occurred_on
+        "movements": rows(db, """SELECT m.id,p.name,m.amount,m.created,m.actor,m.occurred_on,m.kind,m.notes
                                  FROM movements m JOIN perfumes p ON p.id=m.perfume ORDER BY m.id DESC LIMIT 100"""),
         "users": rows(db, "SELECT id,name,role,active FROM users ORDER BY name COLLATE NOCASE")
         if user["role"] == "admin" else [],
@@ -381,6 +386,34 @@ def produce(db, data, user):
     db.execute("UPDATE perfumes SET stock=stock+? WHERE id=?", (quantity, perfume_id))
     db.execute("INSERT INTO movements(perfume,amount,actor,recipe,occurred_on) VALUES (?,?,?,?,?)",
                (perfume_id, quantity, user["name"], json.dumps(recipe), day))
+
+
+def unload_perfume(db, data, user):
+    perfume_id = integer(data.get("id"))
+    day = movement_date(data.get("data"))
+    quantity = amount(data.get("amount"), positive=True)
+    notes = data.get("note", "")
+    if not isinstance(notes, str) or len(notes) > 1000:
+        raise Problem("Le note possono contenere al massimo 1.000 caratteri.")
+    notes = notes.strip()
+    key = data.get("request_key")
+    if not isinstance(key, str) or not re.fullmatch(r"[a-f0-9-]{36}", key):
+        raise Problem("Riapri la maschera per registrare lo scarico.")
+    previous = db.execute("""SELECT perfume,amount,occurred_on,notes FROM movements
+                             WHERE request_key=?""", (key,)).fetchone()
+    if previous:
+        if tuple(previous) != (perfume_id, quantity, day, notes):
+            raise Problem("Lo scarico è già stato registrato. Riapri la maschera per inserirne un altro.",
+                          "409 Conflict")
+        return
+    perfume = get_row(db, "SELECT * FROM perfumes WHERE id=?", (perfume_id,))
+    check_unit(db, perfume["unit"], quantity)
+    if quantity > perfume["stock"]:
+        raise Problem(f"Giacenza insufficiente per {perfume['name']}.")
+    db.execute("UPDATE perfumes SET stock=stock-? WHERE id=?", (quantity, perfume_id))
+    db.execute("""INSERT INTO movements(perfume,amount,actor,recipe,occurred_on,kind,notes,request_key)
+                  VALUES (?,?,?,'[]',?,'unload',?,?)""",
+               (perfume_id, quantity, user["name"], day, notes, key))
 
 
 def save_contact(db, data):
@@ -560,6 +593,8 @@ def api(env, path, method):
             save_perfume(db, data)
         elif action == "produce":
             produce(db, data, user)
+        elif action == "unload":
+            unload_perfume(db, data, user)
         elif action == "contact":
             save_contact(db, data)
         elif action in ("receipt", "purchase"):

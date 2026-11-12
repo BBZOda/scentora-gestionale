@@ -106,6 +106,10 @@ p { line-height: 1.5; margin: 10px 0 0; }
 .button, .icon-button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 43px; padding: 8px 14px; border: 1px solid transparent; border-radius: var(--radius); background: transparent; color: inherit; font-weight: 650; font-size: 13px; transition: background var(--fast) var(--ease), transform var(--fast) var(--ease), opacity var(--fast) var(--ease); }
 .button.primary { color: var(--ink); background: var(--cream); }
 .button.primary:hover { background: #ffefe2; }
+.button.perfume-load { background: #a9cfb5; color: var(--ink); }
+.button.perfume-load:hover { background: #c0e2ca; }
+.button.perfume-unload { background: #edae91; color: var(--ink); }
+.button.perfume-unload:hover { background: #f9c4aa; }
 .button.secondary { border-color: currentColor; }
 .button.secondary:hover, .button.inline:hover, .icon-button:hover { background: #ab795522; }
 .button:active, .icon-button:active { transform: translateY(1px) scale(.985); }
