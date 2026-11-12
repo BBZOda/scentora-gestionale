@@ -38,7 +38,6 @@ const cent = scale / 100;
 const purchaseDivisor = BigInt(scale) * BigInt(cent);
 const number = new Intl.NumberFormat("it-IT", {maximumFractionDigits: 6});
 const money = new Intl.NumberFormat("it-IT", {style:"currency", currency:"EUR", maximumFractionDigits: 6});
-const date = new Intl.DateTimeFormat("it-IT", {dateStyle:"short", timeStyle:"short", timeZone:"Europe/Rome"});
 const format = value => number.format(value / scale);
 const euro = value => money.format(value / scale);
 const shortDate = value => value.split("-").reverse().join("/");
@@ -199,7 +198,7 @@ function table(key, items) {
   const headings = {
     articles:["Codice","Descrizione Articolo","Profumo Scentora","Unità","Costo unitario","Giacenza","Azioni","Fornitore"],
     perfumes:["Profumo","Unità","Costo distinta","Prezzo vendita","Giacenza","Azioni"],
-    movements:["Profumo","Data e ora","Operatore","Quantità"],
+    movements:["Profumo","Data carico","Operatore","Quantità"],
     customers:["Nome","Indirizzo","Città","Telefono","Contabile","Azioni"],
     suppliers:["Nome","Indirizzo","Città","Nazione","Telefono","Contabile","Azioni"],
     receipts:["Data","Cliente","Profumo","Importo","Note"],
@@ -225,7 +224,8 @@ function table(key, items) {
           + cell("Giacenza",format(item.stock),"numeric")
           + cell("Azioni",button("Carica",`produce:${item.id}`,"inline") + button("Distinta Art.",`perfume:${item.id}`,"inline"),"row-actions");
       case "movements":
-        return cell("Profumo",`<strong>${name}</strong>`) + cell("Data e ora",date.format(new Date(item.created.replace(" ","T")+"Z")))
+        return cell("Profumo",`<strong>${name}</strong>`) + cell("Data carico",
+          escape(shortDate(item.occurred_on ?? today.format(new Date(item.created.replace(" ","T")+"Z")))))
           + cell("Operatore",escape(item.actor)) + cell("Quantità",format(item.amount),"numeric");
       case "units":
         return cell("Unità di misura",`<strong>${name}</strong>`);
@@ -308,7 +308,8 @@ function modal(action,id) {
       if (!state.perfumes.length) return notify("Crea prima un profumo con la sua distinta base.");
       title = "Carica profumo";
       label = "Conferma carico";
-      fields = `<div class="form-grid">${select("Profumo","perfume",options(state.perfumes,id || (state.perfumes.length === 1 ? state.perfumes[0].id : null)))}
+      fields = `<div class="form-grid">${input("Data","data",today.format(new Date()),'type="date" required')}
+        ${select("Profumo","perfume",options(state.perfumes,id || (state.perfumes.length === 1 ? state.perfumes[0].id : null)))}
         ${numericInput("Quantità da caricare","amount")}</div><div id="production-preview" aria-live="polite"></div>`;
       break;
     case "unit":

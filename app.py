@@ -19,7 +19,7 @@ DEMO = os.getenv("SCENTORA_DEMO") == "1"
 DB = os.getenv("SCENTORA_DB", str(ROOT / "scentora.sqlite"))
 SESSION_SECONDS = 12 * 3600
 PASSWORD_MIN = 5
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 SCALE = 1_000_000
 CENT = SCALE // 100
 MAX_VALUE = 1_000_000_000 * SCALE
@@ -125,6 +125,8 @@ def migrate_schema(db):
         db.execute("ALTER TABLE articles_new RENAME TO articles")
         if db.execute("PRAGMA foreign_key_check").fetchone():
             raise RuntimeError("Collegamenti non validi dopo la migrazione degli articoli.")
+    if version < 5:
+        db.execute("ALTER TABLE movements ADD COLUMN occurred_on TEXT")
     db.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
 
@@ -260,7 +262,7 @@ def state(db, user):
                                   c.kind,d.perfume_id,d.unit,d.unit_cost,d.quantity,d.notes
                                   FROM accounting_details d JOIN contact_movements m ON m.id=d.movement_id
                                   JOIN contacts c ON c.id=m.contact_id ORDER BY m.occurred_on DESC,m.id DESC"""),
-        "movements": rows(db, """SELECT m.id,p.name,m.amount,m.created,m.actor
+        "movements": rows(db, """SELECT m.id,p.name,m.amount,m.created,m.actor,m.occurred_on
                                  FROM movements m JOIN perfumes p ON p.id=m.perfume ORDER BY m.id DESC LIMIT 100"""),
         "users": rows(db, "SELECT id,name,role,active FROM users ORDER BY name COLLATE NOCASE")
         if user["role"] == "admin" else [],
@@ -344,7 +346,17 @@ def save_perfume(db, data):
                    ((perfume_id, article, qty) for article, qty in lines.items()))
 
 
+def movement_date(value):
+    try:
+        if date.fromisoformat(value).isoformat() == value:
+            return value
+    except (TypeError, ValueError):
+        pass
+    raise Problem("Inserisci una data valida.")
+
+
 def produce(db, data, user):
+    day = movement_date(data["data"]) if "data" in data else None
     perfume_id = integer(data.get("id"))
     perfume = get_row(db, "SELECT * FROM perfumes WHERE id=?", (perfume_id,))
     quantity = amount(data.get("amount"), positive=True)
@@ -367,8 +379,8 @@ def produce(db, data, user):
     db.executemany("UPDATE articles SET stock=stock-? WHERE id=?",
                    ((line["required"], line["id"]) for line in recipe))
     db.execute("UPDATE perfumes SET stock=stock+? WHERE id=?", (quantity, perfume_id))
-    db.execute("INSERT INTO movements(perfume,amount,actor,recipe) VALUES (?,?,?,?)",
-               (perfume_id, quantity, user["name"], json.dumps(recipe)))
+    db.execute("INSERT INTO movements(perfume,amount,actor,recipe,occurred_on) VALUES (?,?,?,?,?)",
+               (perfume_id, quantity, user["name"], json.dumps(recipe), day))
 
 
 def save_contact(db, data):
@@ -401,12 +413,7 @@ def record_accounting(db, data, kind):
             raise Problem("Il movimento è già stato registrato. Chiudi e riapri la maschera per inserirne un altro.",
                           "409 Conflict")
         return
-    try:
-        day = date.fromisoformat(data.get("data", ""))
-        if day.isoformat() != data["data"]:
-            raise ValueError()
-    except (TypeError, ValueError):
-        raise Problem("Inserisci una data valida.")
+    day = movement_date(data.get("data"))
     notes = data.get("note", "")
     if not isinstance(notes, str) or len(notes) > 1000:
         raise Problem("Le note possono contenere al massimo 1.000 caratteri.")
@@ -439,7 +446,7 @@ def record_accounting(db, data, kind):
         if not 0 < total <= MAX_VALUE:
             raise Problem("Il totale dell’acquisto deve essere almeno 0,01 € e rientrare nel limite consentito.")
     movement = db.execute("INSERT INTO contact_movements(contact_id,occurred_on,description,amount) VALUES (?,?,?,?)",
-                          (contact_id, day.isoformat(), description, total)).lastrowid
+                          (contact_id, day, description, total)).lastrowid
     db.execute("""INSERT INTO accounting_details(movement_id,perfume_id,article_id,unit,unit_cost,quantity,notes,
                   request_key,request_hash) VALUES (?,?,?,?,?,?,?,?,?)""",
                (movement, perfume_id, article_id, unit, unit_cost, quantity, notes.strip(), key, fingerprint))
