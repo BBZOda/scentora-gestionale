@@ -645,10 +645,34 @@ def import_perfumes(path):
           f"{len(names)-inserted} già presenti.", flush=True)
 
 
+def apply_article_bulk_update(path):
+    payload = os.getenv("SCENTORA_ARTICLE_BULK_UPDATE")
+    if not payload:
+        return
+    data = json.loads(payload)
+    batch = field(data, "batch")
+    supplier = field(data, "fornitore")
+    cost = amount(data.get("cost"))
+    with closing(connect(path)) as db, db:
+        db.execute("BEGIN IMMEDIATE")
+        db.execute("CREATE TABLE IF NOT EXISTS article_bulk_updates (batch TEXT PRIMARY KEY)")
+        if db.execute("SELECT 1 FROM article_bulk_updates WHERE batch=?", (batch,)).fetchone():
+            return
+        contact = db.execute("""SELECT id FROM contacts WHERE kind='supplier' AND name=? COLLATE NOCASE
+                                ORDER BY id LIMIT 1""", (supplier,)).fetchone()
+        supplier_id = contact["id"] if contact else db.execute(
+            "INSERT INTO contacts(kind,name,address,city,phone) VALUES ('supplier',?,'','','')",
+            (supplier,)).lastrowid
+        count = db.execute("UPDATE articles SET cost=?, supplier_id=?", (cost, supplier_id)).rowcount
+        db.execute("INSERT INTO article_bulk_updates VALUES (?)", (batch,))
+    print(f"Aggiornamento articoli {batch}: {count} articoli impostati.", flush=True)
+
+
 if not DEMO:
     initialize(DB)
     import_articles(DB)
     import_perfumes(DB)
+    apply_article_bulk_update(DB)
 
 if __name__ == "__main__":
     with make_server("0.0.0.0", int(os.getenv("PORT", "8000")), application) as server:
