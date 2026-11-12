@@ -43,7 +43,23 @@ nav a { display: flex; align-items: center; gap: 11px; min-height: 46px; padding
 nav a:hover { color: var(--cream); background: #ffffff0e; }
 nav a[aria-current] { color: var(--cream); background: #f0d9c820; border-color: #f0d9c830; box-shadow: inset 2px 0 var(--accent); }
 .accounting-nav { display: flex; flex-wrap: wrap; gap: 8px; }
-.accounting-nav a { min-height: 44px; padding-inline: 14px; }
+.accounting-nav a {
+  min-height: 44px;
+  padding-inline: 16px;
+  color: var(--ink);
+  background: #d5ad86;
+  border-color: #e2bba1;
+  font-weight: 600;
+}
+.accounting-nav a:hover { color: var(--ink); background: #efc79e; }
+.accounting-nav a[aria-current="page"] {
+  color: var(--ink);
+  background: var(--cream);
+  border-color: var(--cream);
+  box-shadow: inset 0 -3px #a46747;
+  font-weight: 750;
+}
+.accounting-nav a[aria-current="page"]:hover { background: #fff3e6; }
 .account { margin-top: auto; border-top: 1px solid var(--edge); padding: 16px 0 0; display: flex; align-items: center; gap: 9px; }
 .avatar { flex: none; display: grid; place-items: center; width: 38px; height: 38px; border-radius: 50%; color: var(--ink); background: var(--accent); font: 19px var(--display); }
 .identity { min-width: 0; flex: 1; }
