@@ -9,3 +9,16 @@ services:
     buildCommand: python -m py_compile app.py
     startCommand: python app.py
     healthCheckPath: /health
+    disk:
+      name: scentora-data
+      mountPath: /var/data
+      sizeGB: 5
+    envVars:
+      - key: SCENTORA_DEMO
+        value: "0"
+      - key: SCENTORA_DB
+        value: /var/data/scentora.sqlite
+      - key: SCENTORA_ADMIN
+        value: admin
+      - key: SCENTORA_ADMIN_PASSWORD
+        generateValue: true
