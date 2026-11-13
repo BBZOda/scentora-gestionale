@@ -178,7 +178,7 @@ function listing(key) {
       + button("Carica profumo","produce","perfume-load") : ""}
     ${canCreate ? button(label,action,"primary","plus") : ""}</div></div>
     ${accountingSection(key) ? `<nav class="accounting-nav" aria-label="Gestione Contabilità">${["receipts","purchases"].map(tab =>
-      `<a href="#${tab}" ${tab === key ? 'aria-current="page"' : ""}>${sections[tab][0]}</a>`).join("")}</nav>` : ""}
+      `<a href="#${tab}" ${tab === key ? 'aria-current="page"' : ""}>${tab === "receipts" ? "Incasso/Apporto Socio" : sections[tab][0]}</a>`).join("")}</nav>` : ""}
     <section class="panel"><div class="panel-heading"><label class="search">${icon("search")}<input type="search" id="search" aria-label="${placeholder}" placeholder="${placeholder}" value="${escape(query)}"></label><span class="count" id="count" aria-live="polite"></span></div>
     <div id="results">${table(key,filtered(key))}</div></section>`;
 }
