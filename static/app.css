@@ -205,8 +205,8 @@ form[data-form="perfume"] input[name="profumo"] {
 }
 .form-error { border-radius: var(--radius); padding: 10px; background: #f5ded9; color: var(--error); }
 fieldset { min-width: 0; margin: 16px 0 0; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius); }
-form[data-form="perfume"] fieldset,
-.recipe-cost #sale-margin { background: #e7efe2; border-color: #c8d6c1; }
+form[data-form="perfume"] fieldset { background: #e7efe2; border-color: #c8d6c1; }
+.recipe-cost #sale-margin { background: #edae91; border-color: #edae91; }
 @media (min-width: 621px) {
   form[data-form="perfume"] .form-grid { grid-template-columns: minmax(0,3fr) minmax(0,1fr); }
 }
