@@ -39,6 +39,8 @@ const purchaseDivisor = BigInt(scale) * BigInt(cent);
 const number = new Intl.NumberFormat("it-IT", {useGrouping:"always", maximumFractionDigits:6});
 const money = new Intl.NumberFormat("it-IT", {style:"currency", currency:"EUR", useGrouping:"always", maximumFractionDigits:6});
 const saleMoney = new Intl.NumberFormat("it-IT", {style:"currency", currency:"EUR", useGrouping:"always", minimumFractionDigits:2, maximumFractionDigits:2});
+const saleVatRate = 0.22;
+const marginPercent = new Intl.NumberFormat("it-IT", {style:"percent", minimumFractionDigits:2, maximumFractionDigits:2});
 const saleNumber = new Intl.NumberFormat("it-IT", {useGrouping:"always", minimumFractionDigits:2, maximumFractionDigits:2});
 const format = value => number.format(value / scale);
 const euro = value => money.format(value / scale);
@@ -308,9 +310,13 @@ function modal(action,id) {
       title = item ? "Modifica profumo" : "Nuovo profumo";
       fields = `<div class="form-grid">${input("Nome profumo","profumo",item?.name,'required maxlength="120"')}
         ${units(item?.unit ?? state.units.find(x => x.name === "pz.")?.id)}
-        ${input("Prezzo vendita (€)","price",item ? saleNumber.format(item.price / scale) : "",'inputmode="decimal" maxlength="22" required')}
-        <div class="recipe-cost"><span id="recipe-cost-label">Costo distinta</span>
-          <output id="recipe-cost" aria-labelledby="recipe-cost-label"></output></div></div>
+        <div class="perfume-pricing">${input("Prezzo vendita (€)","price",item ? saleNumber.format(item.price / scale) : "",'inputmode="decimal" maxlength="22" required')}
+          <div class="recipe-cost"><span id="net-price-label">Prezzo vendita imponibile</span>
+            <output id="net-price" aria-labelledby="net-price-label" title="IVA 22% scorporata"></output></div>
+          <div class="recipe-cost"><span id="recipe-cost-label">Costo distinta</span>
+          <output id="recipe-cost" aria-labelledby="recipe-cost-label"></output></div>
+          <div class="recipe-cost"><span id="sale-margin-label">Margine</span>
+            <output id="sale-margin" aria-labelledby="sale-margin-label"></output></div></div></div>
         <fieldset><legend>Distinta base</legend><div id="recipe-lines">${(item ? recipe(id) : [{}]).map(recipeLine).join("")}</div>
         ${button("Aggiungi articolo","add-line","secondary","plus")}</fieldset>`;
       break;
@@ -481,6 +487,12 @@ function updatePreview() {
   if (recipeCost) {
     const formatted = euro(totalCost);
     if (recipeCost.value !== formatted) recipeCost.value = formatted;
+    const price = parseSalePrice(dialog.querySelector('input[name="price"]').value);
+    const net = price === null ? null : Math.round(Number(price) * 100 / (1 + saleVatRate)) / 100;
+    const netOutput = dialog.querySelector("#net-price");
+    const marginOutput = dialog.querySelector("#sale-margin");
+    netOutput.value = net === null ? "—" : saleMoney.format(net);
+    marginOutput.value = net > 0 ? marginPercent.format((net - totalCost / scale) / net) : "—";
   }
   const preview = dialog.querySelector("#production-preview");
   if (!preview) return;
@@ -508,7 +520,10 @@ document.addEventListener("focusout", event => {
   const field = event.target;
   if (!field.matches('form[data-form="perfume"] input[name="price"]')) return;
   const value = parseSalePrice(field.value);
-  if (value !== null) field.value = saleNumber.format(Number(value));
+  if (value !== null) {
+    field.value = saleNumber.format(Number(value));
+    updatePreview();
+  }
 });
 
 function formData(form) {

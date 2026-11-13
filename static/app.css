@@ -185,6 +185,11 @@ form[data-form="perfume"] input[name="profumo"] {
   font-size: 18px;
   background: #efe5d9;
 }
+.perfume-pricing { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 8px; }
+.perfume-pricing > * { align-content: end; }
+@media (max-width: 560px) {
+  .perfume-pricing { grid-template-columns: repeat(2,minmax(0,1fr)); }
+}
 .recipe-cost { display: grid; gap: 6px; font-size: 14px; font-weight: 650; }
 .recipe-cost output {
   display: flex;
