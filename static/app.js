@@ -210,7 +210,8 @@ function listing(key) {
       <a href="#equivalents" ${key === "equivalents" ? 'aria-current="page"' : ""}>Tabella Equivalenze</a>
     </nav>` : ""}
     <section class="panel"><div class="panel-heading">${key === "users" ? '<div class="users-toolbar">' : ""}<label class="search">${icon("search")}<input type="search" id="search" aria-label="${placeholder}" placeholder="${placeholder}" value="${escape(query)}"></label>${key === "users" ? button(label,action,"primary","plus") + "</div>" : ""}<span class="count" id="count" aria-live="polite"></span></div>
-    <div id="results">${table(key,filtered(key))}</div></section>`;
+    <div id="results">${table(key,filtered(key))}</div></section>
+    ${key === "purchases" ? '<div class="purchase-search-total" id="purchase-search-total" role="status" hidden></div>' : ""}`;
 }
 
 function filtered(key) {
@@ -873,8 +874,17 @@ document.addEventListener("click", async event => {
 function updateCount() {
   const count = document.querySelector("#count");
   if (count) {
-    const total = filtered(section()).length;
+    const matches = filtered(section());
+    const total = matches.length;
     count.textContent = total === 1 ? "1 voce" : number.format(total) + " voci";
+    const summary = document.querySelector("#purchase-search-total");
+    if (summary) {
+      summary.hidden = !query.trim();
+      if (!summary.hidden) {
+        const amount = matches.reduce((sum,item) => sum + item.amount,0);
+        summary.textContent = "Totale ricerca · " + saleMoney.format(amount / scale);
+      }
+    }
   }
 }
 document.addEventListener("change", event => {
