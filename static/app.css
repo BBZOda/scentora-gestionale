@@ -134,7 +134,11 @@ tr:nth-child(even) { background: #efe5d957; }
 tr:hover td { background: #ebd9c946; }
 .numeric { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .row-actions { white-space: nowrap; }
-.article-actions { display: grid; justify-items: start; width: max-content; }
+.article-actions { display: grid; justify-items: start; gap: 4px; width: max-content; }
+.article-actions > .button.inline { background: #a9cfb5; }
+.article-actions > .button.inline:hover { background: #c0e2ca; }
+.article-edit-actions > .button.inline { background: #dfceb2; }
+.article-edit-actions > .button.inline:hover { background: #e9d9bf; }
 .article-edit-actions { display: flex; align-items: center; gap: 4px; }
 .button.article-delete { background: #f2d3c8; color: var(--error); border-color: #d3a093; }
 .button.article-delete:hover { background: #edbdb0; }
