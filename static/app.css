@@ -262,3 +262,13 @@ legend { padding-inline: 5px; font-weight: 700; font-size: 15px; }
 #recipe-copy-picker small { display: block; margin-block-start: 4px; }
 .dialog-actions:has(.recipe-copy) { flex-wrap: wrap; align-items: end; }
 .table-wrap tfoot :is(th,td) { background: #e6efdf; color: var(--ink); font-size: inherit; font-weight: 700; border-top: 1px solid var(--line); }
+
+/* Compact panels in Elenchi. */
+.accounting-nav[aria-label="Elenchi"]:has(a[href="#units"][aria-current="page"]) + .panel {
+  width: min(100%, 420px);
+}
+.accounting-nav[aria-label="Elenchi"]:has(a[href="#equivalents"][aria-current="page"]) + .panel {
+  width: min(100%, 840px);
+}
+.panel:has(table[aria-label="Tabella Equivalenze"]) th:first-child { width: 12%; }
+.panel:has(table[aria-label="Tabella Equivalenze"]) th:last-child { width: 32%; }
