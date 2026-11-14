@@ -163,7 +163,7 @@ function dashboard() {
 }
 
 const settings = {
-  articles: ["Gestisci codici, costi e disponibilità di magazzino.", "Nuovo articolo", "article", "Cerca per codice o descrizione"],
+  articles: ["Gestisci codici, costi e disponibilità di magazzino.", "Nuovo articolo", "article", "Cerca per codice, descrizione o note"],
   perfumes: ["Consulta il catalogo e configura le distinte base.", "Nuovo profumo", "perfume", "Cerca un profumo"],
   movements: ["Consulta gli ultimi 100 carichi e scarichi di profumi.", "Carica profumo", "produce", "Cerca per profumo, operatore o note"],
   customers: ["Consulta le anagrafiche e i movimenti di incasso.", "Nuovo cliente", "customer", "Cerca per nome, città o telefono"],
@@ -361,7 +361,8 @@ function modal(action,id,keepEquivalences = false) {
         ${select("Fornitore","supplier_id",options(state.suppliers,item?.supplier_id),false)}
         ${units(item?.unit)}
         ${numericInput("Costo unitario (€)","cost",item?.cost)}
-        ${item ? "" : numericInput("Giacenza iniziale","stock",null,false)}</div>`;
+        ${item ? "" : numericInput("Giacenza iniziale","stock",null,false)}</div>
+        <label class="notes-field">Note<textarea name="notes" rows="3" maxlength="1000">${escape(item?.notes)}</textarea></label>`;
       break;
     case "stock":
       title = "Movimenta articolo";
