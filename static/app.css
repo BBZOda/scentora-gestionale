@@ -134,12 +134,13 @@ tr:nth-child(even) { background: #efe5d957; }
 tr:hover td { background: #ebd9c946; }
 .numeric { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .row-actions { white-space: nowrap; }
-.article-actions { display: grid; justify-items: start; gap: 4px; width: max-content; }
+.article-actions { display: flex; align-items: center; gap: 8px; width: max-content; }
+.article-actions .button { min-width: 94px; white-space: nowrap; }
 .article-actions > .button.inline { background: #a9cfb5; }
 .article-actions > .button.inline:hover { background: #c0e2ca; }
 .article-edit-actions > .button.inline { background: #dfceb2; }
 .article-edit-actions > .button.inline:hover { background: #e9d9bf; }
-.article-edit-actions { display: flex; align-items: center; gap: 4px; }
+.article-edit-actions { display: flex; align-items: center; gap: 8px; }
 .button.article-delete { background: #f2d3c8; color: var(--error); border-color: #d3a093; }
 .button.article-delete:hover { background: #edbdb0; }
 .article-edit-actions .article-delete { padding-inline: 8px; }
@@ -311,3 +312,11 @@ table[aria-label="Profumi"] td[data-label="Profumo"] { font-size: 16px; }
 .users-toolbar .button.primary { background: var(--brown); color: var(--cream); }
 .users-toolbar .button.primary:hover { background: #583329; }
 table[aria-label="Utenti"] td[data-label="Utente"] strong { font-size: 18px; }
+
+@media (max-height: 800px) {
+  .sidebar { gap: 20px; }
+  .sidebar nav a { min-height: 40px; padding-block: 7px; }
+}
+@media (max-width: 620px) {
+  .article-actions, .article-edit-actions { flex-direction: column; align-items: stretch; }
+}
