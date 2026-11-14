@@ -328,3 +328,7 @@ dialog:has(form[data-form="purchase-list"]) { width: min(1180px, calc(100% - 24p
 .purchase-lines td:nth-child(6) { width: 95px; }
 form[data-form="purchase-list"] .dialog-content { display: grid; gap: 16px; }
 form[data-form="purchase-list"] [data-action="add-purchase-line"] { justify-self: start; }
+
+.article-actions .button { font-weight: 400; }
+.purchase-actions { display: flex; gap: 6px; }
+.purchase-actions .button { min-width: 34px; min-height: 34px; padding: 4px 8px; }
