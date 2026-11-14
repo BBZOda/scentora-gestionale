@@ -298,3 +298,5 @@ dialog:has(#recipe-equivalences:not([hidden])) { width: min(1290px, calc(100% - 
 .perfume-step:disabled { opacity: .4; cursor: default; }
 .perfume-footer-tools { display: flex; align-items: flex-start; flex-wrap: wrap; gap: 8px; margin-inline-end: auto; }
 .perfume-footer-tools .recipe-copy { margin-inline-end: 0; }
+
+table[aria-label="Profumi"] td[data-label="Profumo"] { font-size: 16px; }
