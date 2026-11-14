@@ -394,9 +394,20 @@ function modal(action,id) {
       <div class="dialog-content">${fields}<p class="form-error" role="alert" hidden></p></div>
       <div class="dialog-actions">${item && ["article","customer","supplier"].includes(action)
         ? button("Elimina",`confirm-${action}-delete:${item.id}`,"article-delete delete-start") : ""}
-        ${action === "perfume" ? recipeCopyControls(id) : ""}
+        ${action === "perfume" ? `${recipeCopyControls(id)}
+          <button type="button" class="button secondary" data-action="toggle-equivalences"
+            aria-controls="recipe-equivalences" aria-expanded="false">Vis. Tabella Equivalenze</button>` : ""}
         ${button("Annulla","close")}<button class="button primary" type="submit">${label}</button></div>
     </form>`;
+  if (action === "perfume") {
+    dialog.innerHTML = `<div class="perfume-editor">${dialog.innerHTML}</div>
+      <aside id="recipe-equivalences" aria-labelledby="recipe-equivalences-title" hidden>
+        <div class="dialog-heading"><h2 id="recipe-equivalences-title">Tabella Equivalenze</h2>
+          <button type="button" class="icon-button" data-action="toggle-equivalences"
+            aria-label="Chiudi Tabella Equivalenze">${icon("close")}</button></div>
+        ${table("equivalents",state.equivalents ?? [])}
+      </aside>`;
+  }
   if (action === "receipt" || action === "purchase" || action === "unload") {
     dialog.querySelector("form").dataset.requestKey = crypto.randomUUID();
   }
@@ -684,6 +695,14 @@ document.addEventListener("click", async event => {
     try { await request("logout",{}); renderLogin(); }
     catch (error) { notify(error.message); }
   } else if (action === "ledger") await openLedger(Number(id));
+  else if (action === "toggle-equivalences") {
+    const panel = dialog.querySelector("#recipe-equivalences");
+    const trigger = dialog.querySelector(".dialog-actions [data-action='toggle-equivalences']");
+    panel.hidden = !panel.hidden;
+    trigger.setAttribute("aria-expanded",String(!panel.hidden));
+    if (panel.hidden) trigger.focus();
+    else if (matchMedia("(max-width: 900px)").matches) panel.scrollIntoView({block:"nearest"});
+  }
   else if (action === "show-recipe-copy") {
     const picker = dialog.querySelector("#recipe-copy-picker");
     picker.hidden = !picker.hidden;

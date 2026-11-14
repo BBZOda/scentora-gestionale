@@ -272,3 +272,23 @@ legend { padding-inline: 5px; font-weight: 700; font-size: 15px; }
 }
 .panel:has(table[aria-label="Tabella Equivalenze"]) th:first-child { width: 12%; }
 .panel:has(table[aria-label="Tabella Equivalenze"]) th:last-child { width: 32%; }
+
+dialog:has(#recipe-equivalences:not([hidden])) { width: min(1290px, calc(100% - 24px)); }
+#recipe-equivalences { min-width: 0; background: var(--surface); }
+#recipe-equivalences h2 { font-size: 22px; }
+#recipe-equivalences th { white-space: normal; }
+@media (min-width: 901px) {
+  dialog:has(#recipe-equivalences:not([hidden])) {
+    display: grid;
+    grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+    overflow: hidden;
+  }
+  dialog:has(#recipe-equivalences:not([hidden])) > * {
+    max-height: calc(100dvh - 26px);
+    overflow: auto;
+  }
+  #recipe-equivalences { border-inline-start: 1px solid var(--line); }
+}
+@media (max-width: 900px) {
+  #recipe-equivalences { border-top: 1px solid var(--line); }
+}
