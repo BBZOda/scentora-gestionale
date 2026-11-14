@@ -200,7 +200,7 @@ function listing(key) {
   return `<div class="page-heading"><div><h1>${sections[key][0]}</h1><p>${description}</p></div>
     <div class="actions">${key === "perfumes" ? button("Scarica profumo","unload","perfume-unload")
       + button("Carica profumo","produce","perfume-load") : ""}
-    ${canCreate ? button(label,action,"primary","plus") : ""}</div></div>
+    ${canCreate && key !== "users" ? button(label,action,"primary","plus") : ""}</div></div>
     ${key === "users" ? usersTabs(key) : ""}
     ${accountingSection(key) ? `<nav class="accounting-nav" aria-label="Gestione Contabilità">${["receipts","purchases"].map(tab =>
       `<a href="#${tab}" ${tab === key ? 'aria-current="page"' : ""}>${tab === "receipts" ? "Incasso/Apporto Socio" : sections[tab][0]}</a>`).join("")}</nav>` : ""}
@@ -208,7 +208,7 @@ function listing(key) {
       <a href="#units" ${key === "units" ? 'aria-current="page"' : ""}>Unità di misura</a>
       <a href="#equivalents" ${key === "equivalents" ? 'aria-current="page"' : ""}>Tabella Equivalenze</a>
     </nav>` : ""}
-    <section class="panel"><div class="panel-heading"><label class="search">${icon("search")}<input type="search" id="search" aria-label="${placeholder}" placeholder="${placeholder}" value="${escape(query)}"></label><span class="count" id="count" aria-live="polite"></span></div>
+    <section class="panel"><div class="panel-heading">${key === "users" ? '<div class="users-toolbar">' : ""}<label class="search">${icon("search")}<input type="search" id="search" aria-label="${placeholder}" placeholder="${placeholder}" value="${escape(query)}"></label>${key === "users" ? button(label,action,"primary","plus") + "</div>" : ""}<span class="count" id="count" aria-live="polite"></span></div>
     <div id="results">${table(key,filtered(key))}</div></section>`;
 }
 
