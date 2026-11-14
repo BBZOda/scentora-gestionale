@@ -288,7 +288,8 @@ function recipeLine(line = {}) {
     ${select("Articolo di base","lineArticle",options(state.articles,line.article,articleLabel))}
     ${numericInput("Quantità per unità","lineAmount",line.amount)}
     <button type="button" class="icon-button" data-action="remove-line" aria-label="Rimuovi riga">${icon("close")}</button>
-    <span class="line-meta"></span></div>`;
+    <span class="line-meta"></span>
+    <strong class="line-meta form-error" role="status" hidden></strong></div>`;
 }
 
 function perfumeFormSnapshot(form) {
@@ -511,6 +512,20 @@ function confirmMovement(id) {
   dialog.showModal();
 }
 
+const equivalenceKey = value => (value ?? "").trim().normalize("NFC").toLocaleLowerCase("it");
+
+function recipeEquivalenceWarning(item, perfumeName) {
+  if (!item || !perfumeName.trim()) return "";
+  const code = equivalenceKey(item.code);
+  const equivalences = state.equivalents ?? [];
+  const matches = equivalences.filter(entry => code
+    ? equivalenceKey(entry.code) === code
+    : equivalenceKey(entry.description) === equivalenceKey(item.name));
+  if (!matches.length || matches.some(entry => equivalenceKey(entry.name) === equivalenceKey(perfumeName))) return "";
+  const names = [...new Set(matches.map(entry => entry.name))].join(", ");
+  return `Non corrispondenza tra profumo ed equivalenza. L’articolo selezionato corrisponde a ${names}.`;
+}
+
 function updatePreview() {
   const purchase = dialog.querySelector('form[data-form="purchase"]');
   if (purchase) {
@@ -531,9 +546,14 @@ function updatePreview() {
     }
   }
   let totalCost = 0;
+  const perfumeName = dialog.querySelector('input[name="profumo"]')?.value ?? "";
   dialog.querySelectorAll(".recipe-line").forEach(line => {
     const item = article(Number(line.querySelector("select").value));
     line.querySelector(".line-meta").textContent = item ? `${unit(item.unit)} · ${euro(item.cost)} per unità · ${format(item.stock)} disponibili` : "";
+    const warning = line.querySelector(".form-error");
+    const message = recipeEquivalenceWarning(item,perfumeName);
+    warning.hidden = !message;
+    if (warning.textContent !== message) warning.textContent = message;
     const quantity = Number(line.querySelector("input").value.replace(",","."));
     if (Number.isFinite(quantity) && quantity > 0) totalCost += lineCost(item,quantity);
   });
