@@ -229,7 +229,7 @@ function table(key, items, movementActions = key === "movements" && section() ==
         return cell("Profumo",`<strong>${name}</strong>`) + cell("Unità",escape(unit(item.unit)))
           + cell("Costo distinta",euro(cost(item.id)),"numeric") + cell("Prezzo vendita",saleMoney.format(item.price / scale),"numeric")
           + cell("Giacenza",format(item.stock),"numeric")
-          + cell("Azioni",button("Carica",`produce:${item.id}`,"inline perfume-load") + button("Distinta Art.",`perfume:${item.id}`,"inline"),"row-actions");
+          + cell("Azioni",button("Carica",`produce:${item.id}`,"inline perfume-load") + button("Distinta Art.",`perfume:${item.id}`,"inline recipe-button"),"row-actions");
       case "movements":
         return cell("Profumo",`<strong>${name}</strong>`) + cell("Data",
           escape(shortDate(item.occurred_on ?? today.format(new Date(item.created.replace(" ","T")+"Z")))))
@@ -359,8 +359,8 @@ function modal(action,id) {
       const products = receipt ? state.perfumes : state.articles;
       if (!contacts.length) return notify(receipt ? "Crea prima un cliente." : "Crea prima un fornitore.");
       if (!receipt && !products.length) return notify("Crea prima un articolo di base.");
-      title = receipt ? "Nuovo incasso" : "Nuovo acquisto articolo";
-      label = receipt ? "Registra incasso" : "Registra acquisto";
+      title = receipt ? "Nuovo incasso / Apporto Soci" : "Nuovo acquisto articolo";
+      label = receipt ? "Registra" : "Registra acquisto";
       fields = `<div class="form-grid">${input("Data","data",today.format(new Date()),'type="date" required')}
         ${select(receipt ? "Cliente" : "Fornitore","contact",options(contacts))}
         ${receipt ? select("Profumo","perfume",options(products),false) + numericInput("Importo (€)","amount")
@@ -385,6 +385,7 @@ function modal(action,id) {
       <div class="dialog-content">${fields}<p class="form-error" role="alert" hidden></p></div>
       <div class="dialog-actions">${item && ["article","customer","supplier"].includes(action)
         ? button("Elimina",`confirm-${action}-delete:${item.id}`,"article-delete delete-start") : ""}
+        ${action === "perfume" ? recipeCopyControls(id) : ""}
         ${button("Annulla","close")}<button class="button primary" type="submit">${label}</button></div>
     </form>`;
   if (action === "receipt" || action === "purchase" || action === "unload") {
@@ -392,6 +393,18 @@ function modal(action,id) {
   }
   dialog.showModal();
   updatePreview();
+}
+
+function recipeCopyControls(id) {
+  const sources = state.perfumes.filter(item => item.id !== id && state.recipes.some(line => line.perfume === item.id));
+  return `<div class="recipe-copy">
+    <button type="button" class="button recipe-button" data-action="show-recipe-copy"
+      aria-controls="recipe-copy-picker" aria-expanded="false">Carica distinta Art. da:</button>
+    <div id="recipe-copy-picker" hidden>
+      ${sources.length ? `${select("Profumo","recipeSource",options(sources,null),false)}
+        <small>La scelta sostituisce le righe della distinta nella scheda.</small>`
+        : "<small>Nessun altro profumo ha una distinta da copiare.</small>"}
+    </div></div>`;
 }
 
 function confirmArticleDelete(id) {
@@ -579,7 +592,10 @@ async function openLedger(id) {
     content.innerHTML = movements.length ? `<div class="table-wrap" tabindex="0" role="region" aria-label="${category}">
       <table><thead><tr><th scope="col">Data</th><th scope="col">Descrizione</th><th scope="col">Importo</th><th scope="col">Note</th></tr></thead>
       <tbody>${movements.map(item => `<tr>${cell("Data",escape(shortDate(item.occurred_on)))}
-        ${cell("Descrizione",escape(item.description))}${cell("Importo",euro(item.amount),"numeric")}${cell("Note",escape(item.notes),"notes-cell")}</tr>`).join("")}</tbody></table></div>`
+        ${cell("Descrizione",escape(item.description))}${cell("Importo",euro(item.amount),"numeric")}${cell("Note",escape(item.notes),"notes-cell")}</tr>`).join("")}</tbody>
+      <tfoot><tr><th scope="row" colspan="2">Totale</th>
+        ${cell("Totale",euro(movements.reduce((sum,item) => sum + item.amount,0)),"numeric")}<td></td>
+      </tr></tfoot></table></div>`
       : `<p><strong>Nessun movimento registrato.</strong></p><p>Qui compariranno i movimenti della sezione ${category} in Gestione Contabilità.</p>`;
   } catch (error) {
     if (!dialog.open || !content.isConnected) return;
@@ -659,6 +675,12 @@ document.addEventListener("click", async event => {
     try { await request("logout",{}); renderLogin(); }
     catch (error) { notify(error.message); }
   } else if (action === "ledger") await openLedger(Number(id));
+  else if (action === "show-recipe-copy") {
+    const picker = dialog.querySelector("#recipe-copy-picker");
+    picker.hidden = !picker.hidden;
+    control.setAttribute("aria-expanded",String(!picker.hidden));
+    if (!picker.hidden) picker.querySelector("select")?.focus();
+  }
   else if (action === "confirm-article-delete") confirmArticleDelete(Number(id));
   else if (action === "confirm-customer-delete") confirmContactDelete("customer",Number(id));
   else if (action === "confirm-supplier-delete") confirmContactDelete("supplier",Number(id));
@@ -673,6 +695,16 @@ function updateCount() {
     count.textContent = total === 1 ? "1 voce" : number.format(total) + " voci";
   }
 }
+document.addEventListener("change", event => {
+  if (!event.target.matches('#recipe-copy-picker select[name="recipeSource"]')) return;
+  const lines = recipe(Number(event.target.value));
+  if (!lines.length) return;
+  dialog.querySelector("#recipe-lines").innerHTML = lines.map(line => recipeLine(line)).join("");
+  event.target.value = "";
+  updatePreview();
+  notify("Distinta caricata nella scheda. Premi Salva per confermare.");
+});
+
 document.addEventListener("input", event => {
   if (event.target.id === "search") {
     query = event.target.value;

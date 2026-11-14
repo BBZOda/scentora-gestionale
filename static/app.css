@@ -253,3 +253,12 @@ legend { padding-inline: 5px; font-weight: 700; font-size: 15px; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
+
+.button.recipe-button { background: #dfceb2; color: var(--ink); }
+.button.recipe-button:hover { background: #e9d9bf; }
+.row-actions .recipe-button { margin-inline-start: 4px; }
+.recipe-copy { margin-inline-end: auto; min-width: 0; }
+#recipe-copy-picker { margin-block-start: 8px; }
+#recipe-copy-picker small { display: block; margin-block-start: 4px; }
+.dialog-actions:has(.recipe-copy) { flex-wrap: wrap; align-items: end; }
+.table-wrap tfoot :is(th,td) { background: #e6efdf; color: var(--ink); font-size: inherit; font-weight: 700; border-top: 1px solid var(--line); }
