@@ -320,3 +320,11 @@ table[aria-label="Utenti"] td[data-label="Utente"] strong { font-size: 18px; }
 @media (max-width: 620px) {
   .article-actions, .article-edit-actions { flex-direction: column; align-items: stretch; }
 }
+
+dialog:has(form[data-form="purchase-list"]) { width: min(1180px, calc(100% - 24px)); }
+.purchase-lines { min-width: 940px; }
+.purchase-lines :is(td, th) { padding-inline: 8px; }
+.purchase-lines td:nth-child(2) { width: 32%; }
+.purchase-lines td:nth-child(6) { width: 95px; }
+form[data-form="purchase-list"] .dialog-content { display: grid; gap: 16px; }
+form[data-form="purchase-list"] [data-action="add-purchase-line"] { justify-self: start; }
