@@ -119,11 +119,11 @@ function renderLogin() {
 
 function render() {
   const current = section();
-  const links = Object.entries(sections).filter(([key]) => key !== "purchases" && key !== "equivalents" && key !== "archives" && (key !== "users" || state.user.role === "admin"))
+  const links = Object.entries(sections).filter(([key]) => key !== "purchases" && key !== "equivalents" && (!usersSection(key) || state.user.role === "admin"))
     .map(([key,[label,symbol]]) => {
       const accounting = key === "receipts";
-      const active = current === key || (accounting && accountingSection(current)) || (key === "units" && current === "equivalents") || (key === "users" && current === "archives");
-      return `<a href="#${accounting ? "accounting" : key}" ${active ? 'aria-current="page"' : ""}>${icon(symbol)}${accounting ? "Gestione Contabilità" : label}</a>`;
+      const active = current === key || (accounting && accountingSection(current)) || (key === "units" && current === "equivalents");
+      return `<a href="#${accounting ? "accounting" : key}" ${active ? 'aria-current="page"' : ""}>${icon(symbol)}${accounting ? "Gestione Contabilità" : key === "archives" ? "Archivi" : label}</a>`;
     }).join("");
   root.innerHTML = `<div class="shell">
     <aside id="sidebar" class="sidebar ${navOpen ? "open" : ""}">${brand}
