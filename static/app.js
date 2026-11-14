@@ -463,7 +463,8 @@ function modal(action,id,keepEquivalences = false) {
         ${select(receipt ? "Cliente" : "Fornitore","contact",options(contacts,original?.contact_id))}
         ${receipt ? select("Profumo","perfume",options(products),false) + numericInput("Importo (€)","amount")
           : select("Articolo di base","article",options(products,original?.article_id,articleLabel))
-            + input("Costo unitario (€)","display_cost","","readonly")
+            + (original ? input("Costo unitario (€)","purchase_cost",String(original.unit_cost / scale).replace(".",","),'inputmode="decimal" maxlength="22" required')
+              : input("Costo unitario (€)","display_cost","","readonly"))
             + input("Unità di misura","display_unit","","readonly")
             + numericInput("Quantità","quantity",original?.quantity)}</div>
         ${receipt ? "" : '<p class="purchase-total" id="purchase-total" aria-live="polite"></p>'}
@@ -605,14 +606,25 @@ function updatePreview() {
     const original = state.accounting.find(row => row.id === Number(purchase.dataset.id));
     const item = article(id);
     const sameArticle = original && original.article_id === id;
-    const cost = sameArticle ? original.unit_cost : item?.cost;
-    purchase.elements.display_cost.value = cost == null ? "" : euro(cost);
+    let cost = sameArticle ? original.unit_cost : item?.cost;
+    const costField = purchase.elements.purchase_cost;
+    if (costField) {
+      if (purchase.dataset.costArticle !== String(id)) {
+        costField.value = cost == null ? "" : String(cost / scale).replace(".",",");
+        purchase.dataset.costArticle = String(id);
+      }
+      const value = Number(costField.value.trim().replace(",", ".")) * scale;
+      cost = /^\d+(?:[.,]\d{1,6})?$/.test(costField.value.trim()) && value <= 1e9 * scale
+        ? Math.round(value) : undefined;
+    } else {
+      purchase.elements.display_cost.value = cost == null ? "" : euro(cost);
+    }
     purchase.elements.display_unit.value = sameArticle ? original.unit : item ? unit(item.unit) : "";
     const preview = purchase.querySelector("#purchase-total");
     const quantity = purchase.elements.quantity.value.trim().replace(",", ".");
     const match = /^(\d*)(?:\.(\d{0,6}))?$/.exec(quantity);
     preview.textContent = "";
-    if (cost === 0) preview.textContent = "Imposta il costo unitario nella scheda dell’articolo di base.";
+    if (cost === 0 && !costField) preview.textContent = "Imposta il costo unitario nella scheda dell’articolo di base.";
     else if (cost && match && quantity && quantity !== ".") {
       const scaled = BigInt((match[1] || "0") + (match[2] || "").padEnd(6,"0"));
       const cents = (BigInt(cost) * scaled + purchaseDivisor / 2n) / purchaseDivisor;
