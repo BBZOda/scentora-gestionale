@@ -238,7 +238,7 @@ function table(key, items, movementActions = key === "movements" && section() ==
     customers:["Nome","Indirizzo","Città","Telefono","Contabile","Azioni"],
     suppliers:["Nome","Indirizzo","Città","Nazione","Telefono","Contabile","Azioni"],
     receipts:["Data","Cliente","Profumo","Importo","Note"],
-    purchases:["Data","Fornitore","Articolo di base","Costo unitario","Unità di misura","Quantità","Totale","Note"],
+    purchases:["Data","Fornitore","Articolo di base","Costo unitario","Unità di misura","Quantità","Totale","Note","Azioni"],
     units:["Unità di misura"],
     equivalents:["Codice","Equivalenza","Profumo Scentora"],
     users:["Utente","Ruolo","Stato","Azioni"],
@@ -288,7 +288,11 @@ function table(key, items, movementActions = key === "movements" && section() ==
           + (key === "purchases" ? cell("Costo unitario",euro(item.unit_cost),"numeric")
             + cell("Unità di misura",escape(item.unit)) + cell("Quantità",format(item.quantity),"numeric") : "")
           + cell(key === "receipts" ? "Importo" : "Totale",euro(item.amount),"numeric")
-          + cell("Note",escape(item.notes),"notes-cell");
+          + cell("Note",escape(item.notes),"notes-cell")
+          + (key === "purchases" ? cell("Azioni",`<div class="purchase-actions">
+            <button type="button" class="button recipe-button" data-action="edit-purchase:${item.id}" title="Modifica acquisto" aria-label="Modifica acquisto">M</button>
+            <button type="button" class="button article-delete" data-action="delete-purchase:${item.id}" title="Elimina acquisto" aria-label="Elimina acquisto">E</button>
+          </div>`) : "");
       default:
         return cell("Utente",`<strong>${name}</strong>`) + cell("Ruolo",item.role === "admin" ? "Amministratore" : "Operatore")
           + cell("Stato",`<span class="stock ${item.active ? "" : "zero"}">${item.active ? "Attivo" : "Disattivato"}</span>`)
@@ -425,24 +429,43 @@ function modal(action,id,keepEquivalences = false) {
         </div>
         ${button("Aggiungi articolo","add-purchase-line","secondary","plus")}`;
       break;
+    case "delete-purchase": {
+      const row = state.accounting.find(item => item.id === id && item.kind === "supplier");
+      if (!row) return;
+      title = "Eliminare l’acquisto?";
+      label = "Conferma eliminazione";
+      fields = `<div class="delete-summary"><strong>${escape(row.description)}</strong>
+        <small>${escape(row.contact)} · ${format(row.quantity)} ${escape(row.unit)} · ${euro(row.amount)}</small></div>
+        <p>Verrà eliminata la riga selezionata e stornato il carico di magazzino, se applicato.</p>`;
+      break;
+    }
     case "receipt":
+    case "edit-purchase":
     case "purchase": {
       const receipt = action === "receipt";
-      const contacts = receipt ? state.customers : state.suppliers;
-      const products = receipt ? state.perfumes : state.articles;
+      const original = action === "edit-purchase" ? state.accounting.find(row => row.id === id && row.kind === "supplier") : null;
+      if (action === "edit-purchase" && !original) return;
+      const contacts = receipt ? state.customers : [...state.suppliers];
+      if (original && !contacts.some(entry => entry.id === original.contact_id)) {
+        contacts.push({id: original.contact_id,name: original.contact});
+      }
+      const products = receipt ? state.perfumes : [...state.articles];
+      if (original && !products.some(entry => entry.id === original.article_id)) {
+        products.push({id: original.article_id,name: original.description});
+      }
       if (!contacts.length) return notify(receipt ? "Crea prima un cliente." : "Crea prima un fornitore.");
       if (!receipt && !products.length) return notify("Crea prima un articolo di base.");
-      title = receipt ? "Nuovo incasso / Apporto Soci" : "Nuovo acquisto articolo";
-      label = receipt ? "Registra" : "Registra acquisto";
-      fields = `<div class="form-grid">${input("Data","data",today.format(new Date()),'type="date" required')}
-        ${select(receipt ? "Cliente" : "Fornitore","contact",options(contacts))}
+      title = receipt ? "Nuovo incasso / Apporto Soci" : original ? "Modifica acquisto" : "Nuovo acquisto articolo";
+      label = receipt ? "Registra" : original ? "Salva" : "Registra acquisto";
+      fields = `<div class="form-grid">${input("Data","data",original?.occurred_on ?? today.format(new Date()),'type="date" required')}
+        ${select(receipt ? "Cliente" : "Fornitore","contact",options(contacts,original?.contact_id))}
         ${receipt ? select("Profumo","perfume",options(products),false) + numericInput("Importo (€)","amount")
-          : select("Articolo di base","article",options(products,null,articleLabel))
+          : select("Articolo di base","article",options(products,original?.article_id,articleLabel))
             + input("Costo unitario (€)","display_cost","","readonly")
             + input("Unità di misura","display_unit","","readonly")
-            + numericInput("Quantità","quantity")}</div>
+            + numericInput("Quantità","quantity",original?.quantity)}</div>
         ${receipt ? "" : '<p class="purchase-total" id="purchase-total" aria-live="polite"></p>'}
-        <label class="notes-field">Note<textarea name="note" rows="3" maxlength="1000"></textarea></label>`;
+        <label class="notes-field">Note<textarea name="note" rows="3" maxlength="1000">${escape(original?.notes)}</textarea></label>`;
       break;
     }
     case "user":
@@ -473,7 +496,7 @@ function modal(action,id,keepEquivalences = false) {
         ${table("equivalents",state.equivalents ?? [])}
       </aside>`;
   }
-  if (action === "receipt" || action === "purchase" || action === "purchase-list" || action === "unload") {
+  if (action === "receipt" || action === "purchase" || action === "edit-purchase" || action === "purchase-list" || action === "unload") {
     dialog.querySelector("form").dataset.requestKey = crypto.randomUUID();
   }
   if (action === "perfume") {
@@ -574,19 +597,23 @@ function recipeEquivalenceWarning(item, perfumeName) {
 }
 
 function updatePreview() {
-  const purchase = dialog.querySelector('form[data-form="purchase"]');
+  const purchase = dialog.querySelector('form:is([data-form="purchase"],[data-form="edit-purchase"])');
   if (purchase) {
-    const item = article(Number(purchase.elements.article.value));
-    purchase.elements.display_cost.value = item ? euro(item.cost) : "";
-    purchase.elements.display_unit.value = item ? unit(item.unit) : "";
+    const id = Number(purchase.elements.article.value);
+    const original = state.accounting.find(row => row.id === Number(purchase.dataset.id));
+    const item = article(id);
+    const sameArticle = original && original.article_id === id;
+    const cost = sameArticle ? original.unit_cost : item?.cost;
+    purchase.elements.display_cost.value = cost == null ? "" : euro(cost);
+    purchase.elements.display_unit.value = sameArticle ? original.unit : item ? unit(item.unit) : "";
     const preview = purchase.querySelector("#purchase-total");
     const quantity = purchase.elements.quantity.value.trim().replace(",", ".");
     const match = /^(\d*)(?:\.(\d{0,6}))?$/.exec(quantity);
     preview.textContent = "";
-    if (item && !item.cost) preview.textContent = "Imposta il costo unitario nella scheda dell’articolo di base.";
-    else if (item && match && quantity && quantity !== ".") {
+    if (cost === 0) preview.textContent = "Imposta il costo unitario nella scheda dell’articolo di base.";
+    else if (cost && match && quantity && quantity !== ".") {
       const scaled = BigInt((match[1] || "0") + (match[2] || "").padEnd(6,"0"));
-      const cents = (BigInt(item.cost) * scaled + purchaseDivisor / 2n) / purchaseDivisor;
+      const cents = (BigInt(cost) * scaled + purchaseDivisor / 2n) / purchaseDivisor;
       if (scaled <= BigInt(1e9 * scale) && cents <= BigInt(1e9 * 100)) {
         preview.textContent = `Totale acquisto ${euro(Number(cents) * cent)}`;
       }
@@ -660,12 +687,12 @@ function formData(form) {
   if (action === "unload") data.request_key = form.dataset.requestKey;
   if (action === "user") data.active = data.active === "true";
   if (action === "customer" || action === "supplier") data.kind = action;
-  if (action === "receipt" || action === "purchase") {
+  if (action === "receipt" || action === "purchase" || action === "edit-purchase") {
     data.contact = Number(data.contact);
     data.request_key = form.dataset.requestKey;
   }
   if (action === "receipt") data.perfume = data.perfume ? Number(data.perfume) : null;
-  if (action === "purchase") {
+  if (action === "purchase" || action === "edit-purchase") {
     data.article = Number(data.article);
     const item = article(data.article);
     data.unit = item?.unit;
@@ -752,6 +779,8 @@ document.addEventListener("submit", async event => {
       produce: "Carico registrato e magazzino aggiornato.",
       unload: "Scarico registrato e giacenza aggiornata.",
       purchase: "Acquisto registrato e giacenza aggiornata.",
+      "edit-purchase": "Acquisto modificato.",
+      "delete-purchase": "Acquisto eliminato.",
       "purchase-list": "Acquisti registrati e giacenze aggiornate.",
       "delete-article": "Articolo eliminato.",
       "delete-contact": "Scheda eliminata.",
