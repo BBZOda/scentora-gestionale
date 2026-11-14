@@ -558,6 +558,30 @@ def record_accounting(db, data, kind):
                 int(kind == "supplier")))
 
 
+def record_purchase_list(db, data):
+    key = data.get("request_key")
+    if not isinstance(key, str) or not re.fullmatch(r"[a-f0-9-]{36}", key):
+        raise Problem("Riapri la maschera per registrare l’acquisto.")
+    lines = data.get("lines")
+    if not isinstance(lines, list) or not 1 <= len(lines) <= 50:
+        raise Problem("Inserisci da 1 a 50 righe di acquisto.")
+    batch_hash = hashlib.sha256(json.dumps(data, sort_keys=True).encode()).hexdigest()
+    for index, line in enumerate(lines, 1):
+        if not isinstance(line, dict):
+            raise Problem(f"Riga {index} non valida.")
+        row_key = hashlib.sha256(f"purchase-list:{key}:{index}".encode()).hexdigest()[:36]
+        try:
+            record_accounting(db, {
+                "request_key": row_key, "batch_hash": batch_hash,
+                "contact": data.get("contact"), "data": data.get("data"),
+                "article": line.get("article"), "unit": line.get("unit"),
+                "unit_cost": line.get("unit_cost"), "quantity": line.get("quantity"),
+                "note": line.get("note", ""),
+            }, "supplier")
+        except Problem as error:
+            raise Problem(f"Riga {index} · {error}", error.status) from error
+
+
 def reconcile_purchase_stock(path):
     payload = os.getenv("SCENTORA_PURCHASE_STOCK_RECONCILE")
     if not payload:
@@ -728,6 +752,8 @@ def api(env, path, method):
             save_contact(db, data)
         elif action == "delete-contact":
             delete_contact(db, data)
+        elif action == "purchase-list":
+            record_purchase_list(db, data)
         elif action in ("receipt", "purchase"):
             record_accounting(db, data, "customer" if action == "receipt" else "supplier")
         elif action == "unit":
