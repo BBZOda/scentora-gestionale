@@ -332,3 +332,5 @@ form[data-form="purchase-list"] [data-action="add-purchase-line"] { justify-self
 .article-actions .button { font-weight: 400; }
 .purchase-actions { display: flex; gap: 6px; }
 .purchase-actions .button { min-width: 34px; min-height: 34px; padding: 4px 8px; }
+
+.purchase-search-total { width: min(100%, 520px); padding: 15px 18px; border-radius: var(--radius); background: var(--surface); color: var(--ink); font-size: 17px; font-weight: 700; }
