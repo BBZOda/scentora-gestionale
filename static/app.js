@@ -5,6 +5,7 @@ const dialog = document.querySelector("#dialog");
 const notifications = document.querySelector("#notifications");
 const sections = {
   dashboard: ["Panoramica", "home"],
+  analysis: ["Analisi Costo", "list"],
   articles: ["Articoli di base", "box"],
   perfumes: ["Profumi", "bottle"],
   movements: ["Produzione", "clock"],
@@ -139,7 +140,7 @@ function render() {
         <span class="breadcrumb">Scentora <span aria-hidden="true">/</span> ${sections[current][0]}</span>
         ${state.demo ? '<span class="demo-chip">Modalità demo</span>' : ""}
       </header>
-      <div class="work" id="work">${current === "dashboard" ? dashboard() : current === "archives" ? archives() : listing(current)}</div>
+      <div class="work" id="work">${current === "dashboard" ? dashboard() : current === "archives" ? archives() : current === "analysis" ? analysisPage() : listing(current)}</div>
     </main></div>`;
   updateCount();
   if (current === "archives" && !dialog.open) openArchives();
@@ -192,6 +193,73 @@ function openArchives() {
     <div class="empty"><p>Scarica una copia degli archivi e della Tabella Equivalenze.</p>
     <a class="button primary" href="/api/backup" download>Esegui Backup</a></div>`;
   dialog.showModal();
+}
+
+
+function analysisPage() {
+  return `<div class="page-heading"><h1>Analisi Costo</h1></div>
+    <section class="panel cost-analysis">
+      ${select("Profumo","analysis-perfume",options(state.perfumes),false)}
+      <div id="analysis-detail"></div>
+    </section>`;
+}
+
+function analysisMetrics(perfume, net, total) {
+  const profit = net - total / scale;
+  const pairs = [
+    ["Prezzo vendita",saleMoney.format(perfume.price / scale)],
+    ["Prezzo vendita imponibile",saleMoney.format(net)],
+    ["Costo totale distinta",euro(total)],
+    ["Margine %",net > 0 ? marginPercent.format(profit / net) : "—"],
+    ["Margine valore",saleMoney.format(profit)],
+  ];
+  return `<dl class="analysis-metrics">${pairs.map(([label,value]) =>
+    `<div><dt>${label}</dt><dd>${value}</dd></div>`).join("")}</dl>`;
+}
+
+function showAnalysis(selectField) {
+  const detail = document.querySelector("#analysis-detail");
+  const perfume = state.perfumes.find(item => item.id === Number(selectField.value));
+  if (!perfume) {
+    detail.innerHTML = "";
+    return;
+  }
+  const net = Math.round(perfume.price / scale * 100 / (1 + saleVatRate)) / 100;
+  const base = cost(perfume.id);
+  detail.innerHTML = `${analysisMetrics(perfume,net,base)}
+    <h2>Distinta Art.</h2>
+    <div class="table-wrap" tabindex="0" role="region" aria-label="Distinta Art.">
+    <table><thead><tr>${["Articolo","Quantità","Costo unitario","Costo totale"].map(label =>
+      `<th scope="col">${label}</th>`).join("")}</tr></thead><tbody>
+      ${recipe(perfume.id).map(line => {
+        const item = article(line.article);
+        return `<tr>${cell("Articolo",escape(item ? articleLabel(item) : "Articolo archiviato"))}
+          ${cell("Quantità",escape(format(line.amount) + (item ? " " + unit(item.unit) : "")))}
+          ${cell("Costo unitario",euro(item?.cost ?? 0),"numeric")}
+          ${cell("Costo totale",euro(lineCost(item,line.amount / scale)),"numeric")}</tr>`;
+      }).join("")}
+      ${[1,2,3].map(index => `<tr class="analysis-extra"><td colspan="3">
+        <input aria-label="Articolo aggiuntivo ${index}" placeholder="Articolo aggiuntivo" maxlength="120"></td>
+        <td><input data-extra-cost aria-label="Costo aggiuntivo ${index} (€)" placeholder="€" inputmode="decimal" maxlength="18"></td></tr>`).join("")}
+    </tbody></table></div>
+    <h2>Risultato con costi aggiuntivi</h2>
+    <div id="analysis-result" aria-live="polite"></div>`;
+  const result = detail.querySelector("#analysis-result");
+  const fields = [...detail.querySelectorAll("[data-extra-cost]")];
+  const update = () => {
+    let total = base;
+    let invalid = false;
+    for (const field of fields) {
+      const value = field.value.trim();
+      const valid = !value || /^\d{1,9}(?:[.,]\d{1,6})?$/.test(value);
+      field.setAttribute("aria-invalid",String(!valid));
+      invalid ||= !valid;
+      if (valid && value) total += Math.round(Number(value.replace(",",".")) * scale);
+    }
+    result.innerHTML = invalid ? '<p class="form-error">Inserisci un costo valido in euro.</p>' : analysisMetrics(perfume,net,total);
+  };
+  for (const field of fields) field.addEventListener("input",update);
+  update();
 }
 
 function listing(key) {
@@ -926,6 +994,7 @@ function updateCount() {
   }
 }
 document.addEventListener("change", event => {
+  if (event.target.name === "analysis-perfume") showAnalysis(event.target);
   if (event.target.matches('.purchase-lines select[name="article"]')) {
     const row = event.target.closest("tr");
     const item = article(Number(event.target.value));
