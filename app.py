@@ -22,7 +22,7 @@ DEMO = os.getenv("SCENTORA_DEMO") == "1"
 DB = os.getenv("SCENTORA_DB", str(ROOT / "scentora.sqlite"))
 SESSION_SECONDS = 12 * 3600
 PASSWORD_MIN = 5
-SCHEMA_VERSION = 11
+SCHEMA_VERSION = 12
 SCALE = 1_000_000
 CENT = SCALE // 100
 MAX_VALUE = 1_000_000_000 * SCALE
@@ -145,6 +145,9 @@ def migrate_schema(db):
         db.execute("ALTER TABLE contacts ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK(archived IN (0,1))")
     if version < 11:
         db.execute("ALTER TABLE accounting_details ADD COLUMN cancelled INTEGER NOT NULL DEFAULT 0")
+    if version < 12:
+        db.execute("ALTER TABLE articles ADD COLUMN notes TEXT NOT NULL DEFAULT ''")
+        db.execute("UPDATE articles SET notes='N.1' WHERE archived=0")
     db.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
 
@@ -311,6 +314,11 @@ def save_article(db, data):
         "code": code, "name": field(data, "descrizione"),
         "unit": unit, "cost": amount(data.get("cost") or 0), "stock": stock,
     }
+    if "notes" in data:
+        notes = data["notes"]
+        if not isinstance(notes, str) or len(notes) > 1000:
+            raise Problem("Le note possono contenere al massimo 1.000 caratteri.")
+        fields["notes"] = notes.strip()
     if "scentora_perfume_id" in data:
         perfume_id = data["scentora_perfume_id"]
         if perfume_id is not None:
