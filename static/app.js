@@ -15,6 +15,7 @@ const sections = {
   units: ["Elenchi", "list"],
   equivalents: ["Tabella Equivalenze", "list"],
   users: ["Utenti", "users"],
+  archives: ["Gestione Archivi", "box"],
 };
 const paths = {
   home: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',
@@ -47,6 +48,7 @@ const format = value => number.format(value / scale);
 const euro = value => money.format(value / scale);
 const shortDate = value => value.split("-").reverse().join("/");
 const today = new Intl.DateTimeFormat("sv-SE", {timeZone:"Europe/Rome", dateStyle:"short"});
+const usersSection = key => key === "users" || key === "archives";
 const accountingSection = key => key === "receipts" || key === "purchases";
 let state;
 let query = "";
@@ -56,7 +58,7 @@ let notificationTimer;
 function section() {
   const key = location.hash.slice(1);
   if (key === "accounting") return "receipts";
-  return Object.hasOwn(sections,key) && (key !== "users" || state?.user.role === "admin") ? key : "dashboard";
+  return Object.hasOwn(sections,key) && (!usersSection(key) || state?.user.role === "admin") ? key : "dashboard";
 }
 const unit = id => state.units.find(item => item.id === id)?.name ?? "";
 const article = id => state.articles.find(item => item.id === id);
@@ -117,10 +119,10 @@ function renderLogin() {
 
 function render() {
   const current = section();
-  const links = Object.entries(sections).filter(([key]) => key !== "purchases" && key !== "equivalents" && (key !== "users" || state.user.role === "admin"))
+  const links = Object.entries(sections).filter(([key]) => key !== "purchases" && key !== "equivalents" && key !== "archives" && (key !== "users" || state.user.role === "admin"))
     .map(([key,[label,symbol]]) => {
       const accounting = key === "receipts";
-      const active = current === key || (accounting && accountingSection(current)) || (key === "units" && current === "equivalents");
+      const active = current === key || (accounting && accountingSection(current)) || (key === "units" && current === "equivalents") || (key === "users" && current === "archives");
       return `<a href="#${accounting ? "accounting" : key}" ${active ? 'aria-current="page"' : ""}>${icon(symbol)}${accounting ? "Gestione Contabilità" : label}</a>`;
     }).join("");
   root.innerHTML = `<div class="shell">
@@ -137,7 +139,7 @@ function render() {
         <span class="breadcrumb">Scentora <span aria-hidden="true">/</span> ${sections[current][0]}</span>
         ${state.demo ? '<span class="demo-chip">Modalità demo</span>' : ""}
       </header>
-      <div class="work" id="work">${current === "dashboard" ? dashboard() : listing(current)}</div>
+      <div class="work" id="work">${current === "dashboard" ? dashboard() : current === "archives" ? archives() : listing(current)}</div>
     </main></div>`;
   updateCount();
 }
@@ -172,6 +174,18 @@ const settings = {
   users: ["Gestisci gli account e i ruoli di accesso.", "Nuovo utente", "user", "Cerca un utente"],
 };
 
+function usersTabs(current) {
+  return `<nav class="accounting-nav" aria-label="Utenti">${["users","archives"].map(key =>
+    `<a href="#${key}" ${key === current ? 'aria-current="page"' : ""}>${sections[key][0]}</a>`).join("")}</nav>`;
+}
+
+function archives() {
+  return `<div class="page-heading"><div><h1>Gestione Archivi</h1>
+    <p>Scarica una copia degli archivi e della Tabella Equivalenze.</p></div>
+    <div class="actions"><a class="button primary" href="/api/backup" download>Scarica backup</a></div>
+  </div>${usersTabs("archives")}`;
+}
+
 function listing(key) {
   const [description,label,action,placeholder] = settings[key];
   const canCreate = key !== "equivalents" && (key !== "units" || state.user.role === "admin");
@@ -179,6 +193,7 @@ function listing(key) {
     <div class="actions">${key === "perfumes" ? button("Scarica profumo","unload","perfume-unload")
       + button("Carica profumo","produce","perfume-load") : ""}
     ${canCreate ? button(label,action,"primary","plus") : ""}</div></div>
+    ${key === "users" ? usersTabs(key) : ""}
     ${accountingSection(key) ? `<nav class="accounting-nav" aria-label="Gestione Contabilità">${["receipts","purchases"].map(tab =>
       `<a href="#${tab}" ${tab === key ? 'aria-current="page"' : ""}>${tab === "receipts" ? "Incasso/Apporto Socio" : sections[tab][0]}</a>`).join("")}</nav>` : ""}
     ${["units","equivalents"].includes(key) ? `<nav class="accounting-nav" aria-label="Elenchi">
