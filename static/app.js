@@ -142,6 +142,7 @@ function render() {
       <div class="work" id="work">${current === "dashboard" ? dashboard() : current === "archives" ? archives() : listing(current)}</div>
     </main></div>`;
   updateCount();
+  if (current === "archives" && !dialog.open) openArchives();
 }
 
 function dashboard() {
@@ -181,9 +182,16 @@ function usersTabs(current) {
 
 function archives() {
   return `<div class="page-heading"><div><h1>Gestione Archivi</h1>
-    <p>Scarica una copia degli archivi e della Tabella Equivalenze.</p></div>
-    <div class="actions"><a class="button primary" href="/api/backup" download>Esegui Backup</a></div>
-  </div>${usersTabs("archives")}`;
+    </div></div>${usersTabs("archives")}
+    <div class="empty">${button("Apri finestra di backup","open-archives","primary")}</div>`;
+}
+
+function openArchives() {
+  dialog.innerHTML = `<div class="dialog-heading"><h2 id="dialog-title">Gestione Archivi</h2>
+    <button type="button" class="icon-button" data-action="close" aria-label="Chiudi">${icon("close")}</button></div>
+    <div class="empty"><p>Scarica una copia degli archivi e della Tabella Equivalenze.</p>
+    <a class="button primary" href="/api/backup" download>Esegui Backup</a></div>`;
+  dialog.showModal();
 }
 
 function listing(key) {
@@ -738,6 +746,7 @@ document.addEventListener("click", async event => {
     control.setAttribute("aria-expanded",navOpen);
     control.innerHTML = icon(navOpen ? "close" : "menu");
   } else if (action === "close") dialog.close();
+  else if (action === "open-archives" && section() === "archives") openArchives();
   else if (action === "add-line") {
     const lines = dialog.querySelector("#recipe-lines");
     if (lines.children.length >= 100) return;
