@@ -22,7 +22,7 @@ DEMO = os.getenv("SCENTORA_DEMO") == "1"
 DB = os.getenv("SCENTORA_DB", str(ROOT / "scentora.sqlite"))
 SESSION_SECONDS = 12 * 3600
 PASSWORD_MIN = 5
-SCHEMA_VERSION = 12
+SCHEMA_VERSION = 13
 SCALE = 1_000_000
 CENT = SCALE // 100
 MAX_VALUE = 1_000_000_000 * SCALE
@@ -148,6 +148,9 @@ def migrate_schema(db):
     if version < 12:
         db.execute("ALTER TABLE articles ADD COLUMN notes TEXT NOT NULL DEFAULT ''")
         db.execute("UPDATE articles SET notes='N.1' WHERE archived=0")
+    if version < 13:
+        db.execute("""UPDATE accounting_details SET notes='N.1'
+                      WHERE article_id IS NOT NULL AND cancelled=0 AND trim(notes)=''""")
     db.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
 
