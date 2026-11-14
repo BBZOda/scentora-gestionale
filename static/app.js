@@ -676,7 +676,7 @@ document.addEventListener("submit", async event => {
   event.preventDefault();
   const action = form.dataset.form || "login";
   const submit = form.querySelector('[type="submit"]');
-  const errorBox = form.querySelector(".form-error");
+  const errorBox = form.querySelector('.form-error[role="alert"]');
   const label = submit.innerHTML;
   submit.disabled = true;
   submit.textContent = action === "login" ? "Accesso in corso…" : "Salvataggio…";
