@@ -119,11 +119,11 @@ function renderLogin() {
 
 function render() {
   const current = section();
-  const links = Object.entries(sections).filter(([key]) => key !== "purchases" && key !== "equivalents" && (!usersSection(key) || state.user.role === "admin"))
+  const links = Object.entries(sections).filter(([key]) => key !== "purchases" && key !== "equivalents" && key !== "archives" && (!usersSection(key) || state.user.role === "admin"))
     .map(([key,[label,symbol]]) => {
       const accounting = key === "receipts";
-      const active = current === key || (accounting && accountingSection(current)) || (key === "units" && current === "equivalents");
-      return `<a href="#${accounting ? "accounting" : key}" ${active ? 'aria-current="page"' : ""}>${icon(symbol)}${accounting ? "Gestione Contabilità" : key === "archives" ? "Archivi" : label}</a>`;
+      const active = current === key || (accounting && accountingSection(current)) || (key === "units" && current === "equivalents") || (key === "users" && current === "archives");
+      return `<a href="#${accounting ? "accounting" : key}" ${active ? 'aria-current="page"' : ""}>${icon(symbol)}${accounting ? "Gestione Contabilità" : key === "users" ? "Utenti e Archivi" : label}</a>`;
     }).join("");
   root.innerHTML = `<div class="shell">
     <aside id="sidebar" class="sidebar ${navOpen ? "open" : ""}">${brand}
@@ -200,7 +200,8 @@ function listing(key) {
   return `<div class="page-heading"><div><h1>${sections[key][0]}</h1><p>${description}</p></div>
     <div class="actions">${key === "perfumes" ? button("Scarica profumo","unload","perfume-unload")
       + button("Carica profumo","produce","perfume-load") : ""}
-    ${canCreate && key !== "users" ? button(label,action,"primary","plus") : ""}</div></div>
+    ${canCreate && key !== "users" ? button(label,action,"primary","plus") : ""}
+    ${key === "purchases" ? button("Acquisto a lista","purchase-list","recipe-button","plus") : ""}</div></div>
     ${key === "users" ? usersTabs(key) : ""}
     ${accountingSection(key) ? `<nav class="accounting-nav" aria-label="Gestione Contabilità">${["receipts","purchases"].map(tab =>
       `<a href="#${tab}" ${tab === key ? 'aria-current="page"' : ""}>${tab === "receipts" ? "Incasso/Apporto Socio" : sections[tab][0]}</a>`).join("")}</nav>` : ""}
@@ -306,6 +307,15 @@ const select = (label,name,choices,required = true) =>
 const units = id => select("Unità di misura","unit",options(state.units,id));
 const selected = (a,b) => a === b ? "selected" : "";
 
+function purchaseLine() {
+  return `<tr><td data-purchase-code></td>
+    <td><select name="article" aria-label="Descrizione Articolo" required>${options(state.articles,null,articleLabel)}</select></td>
+    <td data-purchase-perfume></td><td data-purchase-unit></td><td data-purchase-cost class="numeric"></td>
+    <td><input name="quantity" aria-label="Quantità" inputmode="decimal" maxlength="22" required></td>
+    <td><input name="note" aria-label="Note" maxlength="1000"></td>
+    <td><button type="button" class="icon-button" data-action="remove-purchase-line" aria-label="Rimuovi riga">${icon("close")}</button></td></tr>`;
+}
+
 function recipeLine(line = {}) {
   return `<div class="recipe-line">
     ${select("Articolo di base","lineArticle",options(state.articles,line.article,articleLabel))}
@@ -401,6 +411,20 @@ function modal(action,id,keepEquivalences = false) {
         ${action === "supplier" ? input("Nazione","nazione",item?.country,'maxlength="100"') : ""}
         ${input("Telefono","telefono",item?.phone,'type="tel" maxlength="48"')}</div>`;
       break;
+    case "purchase-list":
+      if (!state.suppliers.length) return notify("Crea prima un fornitore.");
+      if (!state.articles.length) return notify("Crea prima un articolo di base.");
+      title = "Acquisto a lista";
+      label = "Salva";
+      fields = `<div class="form-grid">${input("Data","data",today.format(new Date()),'type="date" required')}
+        ${select("Fornitore","contact",options(state.suppliers))}</div>
+        <div class="table-wrap" tabindex="0" role="region" aria-label="Righe di acquisto">
+          <table class="purchase-lines"><thead><tr>
+            ${["Codice","Descrizione Articolo","Profumo Scentora","Unità di misura","Costo unitario (€)","Quantità","Note","Azioni"].map(heading => `<th scope="col">${heading}</th>`).join("")}
+          </tr></thead><tbody>${purchaseLine()}</tbody></table>
+        </div>
+        ${button("Aggiungi articolo","add-purchase-line","secondary","plus")}`;
+      break;
     case "receipt":
     case "purchase": {
       const receipt = action === "receipt";
@@ -449,7 +473,7 @@ function modal(action,id,keepEquivalences = false) {
         ${table("equivalents",state.equivalents ?? [])}
       </aside>`;
   }
-  if (action === "receipt" || action === "purchase" || action === "unload") {
+  if (action === "receipt" || action === "purchase" || action === "purchase-list" || action === "unload") {
     dialog.querySelector("form").dataset.requestKey = crypto.randomUUID();
   }
   if (action === "perfume") {
@@ -649,6 +673,18 @@ function formData(form) {
     delete data.display_cost;
     delete data.display_unit;
   }
+  if (action === "purchase-list") {
+    return {
+      data: data.data, contact: Number(data.contact), request_key: form.dataset.requestKey,
+      lines: [...form.querySelectorAll(".purchase-lines tbody tr")].map(row => {
+        const id = Number(row.querySelector('[name="article"]').value);
+        const item = article(id);
+        return {article: id, unit: item?.unit, unit_cost: item ? item.cost / scale : null,
+          quantity: row.querySelector('[name="quantity"]').value,
+          note: row.querySelector('[name="note"]').value};
+      }),
+    };
+  }
   if (action === "perfume") {
     const price = parseSalePrice(data.price);
     if (price === null) throw new Error("Inserisci un prezzo di vendita con al massimo due decimali.");
@@ -716,6 +752,7 @@ document.addEventListener("submit", async event => {
       produce: "Carico registrato e magazzino aggiornato.",
       unload: "Scarico registrato e giacenza aggiornata.",
       purchase: "Acquisto registrato e giacenza aggiornata.",
+      "purchase-list": "Acquisti registrati e giacenze aggiornate.",
       "delete-article": "Articolo eliminato.",
       "delete-contact": "Scheda eliminata.",
       "cancel-movement": "Movimento eliminato e giacenze aggiornate.",
@@ -747,7 +784,17 @@ document.addEventListener("click", async event => {
     control.innerHTML = icon(navOpen ? "close" : "menu");
   } else if (action === "close") dialog.close();
   else if (action === "open-archives" && section() === "archives") openArchives();
-  else if (action === "add-line") {
+  else if (action === "add-purchase-line") {
+    const lines = dialog.querySelector(".purchase-lines tbody");
+    if (lines.rows.length >= 50) return notify("Puoi inserire fino a 50 righe per lista.");
+    lines.insertAdjacentHTML("beforeend",purchaseLine());
+    lines.lastElementChild.querySelector("select").focus();
+  } else if (action === "remove-purchase-line") {
+    const row = control.closest("tr");
+    if (row.parentElement.rows.length <= 1) return notify("L’acquisto deve contenere almeno una riga.");
+    row.remove();
+    dialog.querySelector('[data-action="add-purchase-line"]').focus();
+  } else if (action === "add-line") {
     const lines = dialog.querySelector("#recipe-lines");
     if (lines.children.length >= 100) return;
     lines.insertAdjacentHTML("beforeend",recipeLine());
@@ -802,6 +849,15 @@ function updateCount() {
   }
 }
 document.addEventListener("change", event => {
+  if (event.target.matches('.purchase-lines select[name="article"]')) {
+    const row = event.target.closest("tr");
+    const item = article(Number(event.target.value));
+    const perfume = state.perfumes.find(entry => entry.id === item?.scentora_perfume_id);
+    row.querySelector("[data-purchase-code]").textContent = item?.code ?? "";
+    row.querySelector("[data-purchase-perfume]").textContent = perfume?.name ?? "";
+    row.querySelector("[data-purchase-unit]").textContent = item ? unit(item.unit) : "";
+    row.querySelector("[data-purchase-cost]").textContent = item ? euro(item.cost) : "";
+  }
   if (!event.target.matches('#recipe-copy-picker select[name="recipeSource"]')) return;
   const lines = recipe(Number(event.target.value));
   if (!lines.length) return;
