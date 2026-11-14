@@ -182,7 +182,7 @@ function usersTabs(current) {
 function archives() {
   return `<div class="page-heading"><div><h1>Gestione Archivi</h1>
     <p>Scarica una copia degli archivi e della Tabella Equivalenze.</p></div>
-    <div class="actions"><a class="button primary" href="/api/backup" download>Scarica backup</a></div>
+    <div class="actions"><a class="button primary" href="/api/backup" download>Esegui Backup</a></div>
   </div>${usersTabs("archives")}`;
 }
 
@@ -273,7 +273,7 @@ function table(key, items, movementActions = key === "movements" && section() ==
       case "receipts":
       case "purchases":
         return cell("Data",shortDate(item.occurred_on))
-          + cell(key === "receipts" ? "Cliente" : "Fornitore",`<strong>${escape(item.contact)}</strong>`)
+          + cell(key === "receipts" ? "Cliente" : "Fornitore",item.contact_id ? button(escape(item.contact),`ledger:${item.contact_id}`,"inline text-link") : `<strong>${escape(item.contact)}</strong>`)
           + cell(key === "receipts" ? "Profumo" : "Articolo di base",
             key === "receipts" && item.perfume_id === null ? "—" : escape(item.description))
           + (key === "purchases" ? cell("Costo unitario",euro(item.unit_cost),"numeric")
@@ -654,9 +654,12 @@ function formData(form) {
 
 async function openLedger(id) {
   const contact = [...state.customers, ...state.suppliers].find(item => item.id === id);
-  if (!contact) return;
-  const category = contact.kind === "customer" ? "Incassi" : "Acquisto Articoli";
-  dialog.innerHTML = `<div class="dialog-heading"><h2 id="dialog-title">Contabile · ${escape(contact.name)}</h2>
+  const movement = state.accounting.find(item => item.contact_id === id);
+  const name = contact?.name ?? movement?.contact;
+  const kind = contact?.kind ?? movement?.kind;
+  if (!name) return;
+  const category = kind === "customer" ? "Incassi" : "Acquisto Articoli";
+  dialog.innerHTML = `<div class="dialog-heading"><h2 id="dialog-title">Contabile · ${escape(name)}</h2>
     <button class="icon-button" data-action="close" aria-label="Chiudi">${icon("close")}</button></div>
     <div class="dialog-content" id="ledger-content"><p role="status">Caricamento movimenti…</p></div>
     <div class="dialog-actions">${button("Chiudi","close")}</div>`;
