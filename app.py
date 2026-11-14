@@ -261,11 +261,15 @@ def login(db, data, ip):
     return {"ok": True}, "200 OK", token
 
 
+EQUIVALENCES = json.loads(os.getenv("SCENTORA_EQUIVALENCES", "[]"))
+
+
 def state(db, user):
     return {
         "user": dict(user),
         "demo": DEMO,
         "articles": rows(db, "SELECT * FROM articles WHERE archived=0 ORDER BY name COLLATE NOCASE"),
+        "equivalents": EQUIVALENCES,
         "units": rows(db, "SELECT * FROM units ORDER BY name COLLATE NOCASE"),
         "perfumes": rows(db, "SELECT * FROM perfumes ORDER BY name COLLATE NOCASE"),
         "recipes": rows(db, "SELECT * FROM recipes ORDER BY perfume,article"),

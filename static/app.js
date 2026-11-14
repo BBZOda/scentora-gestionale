@@ -13,6 +13,7 @@ const sections = {
   receipts: ["Incassi", "wallet"],
   purchases: ["Acquisto Articoli", "wallet"],
   units: ["Elenchi", "list"],
+  equivalents: ["Tabella Equivalenze", "list"],
   users: ["Utenti", "users"],
 };
 const paths = {
@@ -116,10 +117,10 @@ function renderLogin() {
 
 function render() {
   const current = section();
-  const links = Object.entries(sections).filter(([key]) => key !== "purchases" && (key !== "users" || state.user.role === "admin"))
+  const links = Object.entries(sections).filter(([key]) => key !== "purchases" && key !== "equivalents" && (key !== "users" || state.user.role === "admin"))
     .map(([key,[label,symbol]]) => {
       const accounting = key === "receipts";
-      const active = current === key || (accounting && accountingSection(current));
+      const active = current === key || (accounting && accountingSection(current)) || (key === "units" && current === "equivalents");
       return `<a href="#${accounting ? "accounting" : key}" ${active ? 'aria-current="page"' : ""}>${icon(symbol)}${accounting ? "Gestione Contabilità" : label}</a>`;
     }).join("");
   root.innerHTML = `<div class="shell">
@@ -166,19 +167,24 @@ const settings = {
   suppliers: ["Consulta le anagrafiche e i movimenti di spesa.", "Nuovo fornitore", "supplier", "Cerca per nome, città, nazione o telefono"],
   receipts: ["Registra gli incassi dei clienti.", "Nuovo incasso", "receipt", "Cerca per cliente, profumo o note"],
   purchases: ["Registra gli acquisti dai fornitori e aggiorna la giacenza degli articoli.", "Nuovo acquisto", "purchase", "Cerca per fornitore, articolo o note"],
+  equivalents: ["Corrispondenze tra codici, equivalenze e profumi Scentora.", "", "", "Cerca per codice, equivalenza o profumo"],
   units: ["Unità di misura disponibili nelle schede.", "Nuova unità", "unit", "Cerca un’unità"],
   users: ["Gestisci gli account e i ruoli di accesso.", "Nuovo utente", "user", "Cerca un utente"],
 };
 
 function listing(key) {
   const [description,label,action,placeholder] = settings[key];
-  const canCreate = key !== "units" || state.user.role === "admin";
+  const canCreate = key !== "equivalents" && (key !== "units" || state.user.role === "admin");
   return `<div class="page-heading"><div><h1>${sections[key][0]}</h1><p>${description}</p></div>
     <div class="actions">${key === "perfumes" ? button("Scarica profumo","unload","perfume-unload")
       + button("Carica profumo","produce","perfume-load") : ""}
     ${canCreate ? button(label,action,"primary","plus") : ""}</div></div>
     ${accountingSection(key) ? `<nav class="accounting-nav" aria-label="Gestione Contabilità">${["receipts","purchases"].map(tab =>
       `<a href="#${tab}" ${tab === key ? 'aria-current="page"' : ""}>${tab === "receipts" ? "Incasso/Apporto Socio" : sections[tab][0]}</a>`).join("")}</nav>` : ""}
+    ${["units","equivalents"].includes(key) ? `<nav class="accounting-nav" aria-label="Elenchi">
+      <a href="#units" ${key === "units" ? 'aria-current="page"' : ""}>Unità di misura</a>
+      <a href="#equivalents" ${key === "equivalents" ? 'aria-current="page"' : ""}>Tabella Equivalenze</a>
+    </nav>` : ""}
     <section class="panel"><div class="panel-heading"><label class="search">${icon("search")}<input type="search" id="search" aria-label="${placeholder}" placeholder="${placeholder}" value="${escape(query)}"></label><span class="count" id="count" aria-live="polite"></span></div>
     <div id="results">${table(key,filtered(key))}</div></section>`;
 }
@@ -210,6 +216,7 @@ function table(key, items, movementActions = key === "movements" && section() ==
     receipts:["Data","Cliente","Profumo","Importo","Note"],
     purchases:["Data","Fornitore","Articolo di base","Costo unitario","Unità di misura","Quantità","Totale","Note"],
     units:["Unità di misura"],
+    equivalents:["Codice","Equivalenza","Profumo Scentora"],
     users:["Utente","Ruolo","Stato","Azioni"],
   }[key];
   const body = items.map(item => {
@@ -237,6 +244,8 @@ function table(key, items, movementActions = key === "movements" && section() ==
           + cell("Operatore",escape(item.actor)) + cell("Quantità",format(item.amount),"numeric")
           + cell("Note",escape(item.notes),"notes-cell")
           + (movementActions ? cell("Azioni",button("Elimina",`confirm-movement:${item.id}`,"article-delete"),"row-actions") : "");
+      case "equivalents":
+        return cell("Codice",escape(item.code)) + cell("Equivalenza",escape(item.description)) + cell("Profumo Scentora",name);
       case "units":
         return cell("Unità di misura",`<strong>${name}</strong>`);
       case "customers":
