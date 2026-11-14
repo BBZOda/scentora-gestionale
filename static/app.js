@@ -745,7 +745,10 @@ async function openLedger(id) {
   if (!name) return;
   const category = kind === "customer" ? "Incassi" : "Acquisto Articoli";
   dialog.innerHTML = `<div class="dialog-heading"><h2 id="dialog-title">Contabile · ${escape(name)}</h2>
-    <button class="icon-button" data-action="close" aria-label="Chiudi">${icon("close")}</button></div>
+    <div class="dialog-heading-actions">
+      ${kind === "supplier" ? '<button type="button" id="ledger-notes" class="button recipe-button" aria-controls="ledger-content" disabled>ELENCO SEPARATO</button>' : ""}
+      <button class="icon-button" data-action="close" aria-label="Chiudi">${icon("close")}</button>
+    </div></div>
     <div class="dialog-content" id="ledger-content"><p role="status">Caricamento movimenti…</p></div>
     <div class="dialog-actions">${button("Chiudi","close")}</div>`;
   const content = dialog.querySelector("#ledger-content");
@@ -753,7 +756,7 @@ async function openLedger(id) {
   try {
     const {movements} = await request(`contacts/${id}/ledger`);
     if (!dialog.open || !content.isConnected) return;
-    content.innerHTML = movements.length ? `<div class="table-wrap" tabindex="0" role="region" aria-label="${category}">
+    const detail = movements.length ? `<div class="table-wrap" tabindex="0" role="region" aria-label="${category}">
       <table><thead><tr><th scope="col">Data</th><th scope="col">Descrizione</th><th scope="col">Importo</th><th scope="col">Note</th></tr></thead>
       <tbody>${movements.map(item => `<tr>${cell("Data",escape(shortDate(item.occurred_on)))}
         ${cell("Descrizione",escape(item.description))}${cell("Importo",euro(item.amount),"numeric")}${cell("Note",escape(item.notes),"notes-cell")}</tr>`).join("")}</tbody>
@@ -761,6 +764,28 @@ async function openLedger(id) {
         ${cell("Totale",euro(movements.reduce((sum,item) => sum + item.amount,0)),"numeric")}<td></td>
       </tr></tfoot></table></div>`
       : `<p><strong>Nessun movimento registrato.</strong></p><p>Qui compariranno i movimenti della sezione ${category} in Gestione Contabilità.</p>`;
+    content.innerHTML = detail;
+    const toggle = dialog.querySelector("#ledger-notes");
+    if (toggle && movements.length) {
+      const totals = new Map();
+      for (const {notes, amount} of movements) {
+        const note = notes?.trim() ?? "";
+        totals.set(note, (totals.get(note) ?? 0) + amount);
+      }
+      const summary = `<div class="table-wrap" tabindex="0" role="region" aria-label="Totali per nota">
+        <table><thead><tr><th scope="col">Fornitore</th><th scope="col">Nota</th><th scope="col">Totale</th></tr></thead>
+        <tbody>${[...totals].map(([note, amount]) => `<tr>${cell("Fornitore",escape(name))}
+          ${cell("Nota",note ? "Totale per " + escape(note) : "Senza note","notes-cell")}
+          ${cell("Totale",saleMoney.format(amount / scale),"numeric")}</tr>`).join("")}</tbody></table></div>`;
+      let showSummary = false;
+      toggle.disabled = false;
+      toggle.addEventListener("click", () => {
+        showSummary = !showSummary;
+        content.innerHTML = showSummary ? summary : detail;
+        toggle.textContent = showSummary ? "VEDI MOVIMENTI" : "ELENCO SEPARATO";
+        dialog.scrollTop = 0;
+      });
+    }
   } catch (error) {
     if (!dialog.open || !content.isConnected) return;
     if (error.status === 401) {
