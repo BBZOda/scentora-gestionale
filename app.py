@@ -7,6 +7,9 @@ import re
 import secrets
 import sqlite3
 from contextlib import closing
+from io import BytesIO
+from tempfile import TemporaryDirectory
+from zipfile import ZIP_DEFLATED, ZipFile
 from datetime import date
 from decimal import Decimal, InvalidOperation
 from http.cookies import SimpleCookie
@@ -625,6 +628,21 @@ def read_json(env):
     return data
 
 
+def archive_backup(db):
+    # Use SQLite's backup API so the copy includes committed changes in the WAL.
+    archive = BytesIO()
+    with TemporaryDirectory(prefix="scentora-backup-") as directory:
+        database = Path(directory) / "scentora.sqlite"
+        with closing(connect(database)) as snapshot, snapshot:
+            db.backup(snapshot)
+            snapshot.execute("DELETE FROM sessions")
+            snapshot.execute("DELETE FROM login_attempts")
+        with ZipFile(archive, "w", compression=ZIP_DEFLATED) as backup:
+            backup.write(database, "scentora.sqlite")
+            backup.writestr("tabella-equivalenze.json", json.dumps(EQUIVALENCES, ensure_ascii=False, indent=2))
+    return archive.getvalue()
+
+
 def api(env, path, method):
     cookies = SimpleCookie(env.get("HTTP_COOKIE", ""))
     session = cookies["scentora"].value if "scentora" in cookies else ""
@@ -668,6 +686,12 @@ def api(env, path, method):
                            (session, int(time()))).fetchone())
         if not user:
             return {"error": "Accedi per continuare."}, "401 Unauthorized", headers
+        if path == "/api/backup" and method == "GET":
+            if user["role"] != "admin":
+                raise Problem("Operazione riservata agli amministratori.", "403 Forbidden")
+            filename = f"scentora-backup-{date.today().isoformat()}.zip"
+            headers.append(("Content-Disposition", f'attachment; filename="{filename}"'))
+            return archive_backup(db), "200 OK", headers
         if path == "/api/state" and method == "GET":
             db.execute("BEGIN")
             return state(db, user), "200 OK", headers
@@ -744,7 +768,10 @@ def application(env, start_response):
                 raise Problem("Richiesta non autorizzata.", "403 Forbidden")
             result, status, extra = api(env, path, method)
             headers.extend(extra)
-            body = json.dumps(result, ensure_ascii=False).encode()
+            if isinstance(result, bytes):
+                mime, body = "application/zip", result
+            else:
+                body = json.dumps(result, ensure_ascii=False).encode()
         else:
             raise Problem("Pagina non trovata.", "404 Not Found")
     except Problem as error:
@@ -756,7 +783,8 @@ def application(env, start_response):
         logging.exception("Errore durante la richiesta")
         status = "500 Internal Server Error"
         body = json.dumps({"error": "Si è verificato un errore. Riprova."}).encode()
-    start_response(status, headers + [("Content-Type", mime + "; charset=utf-8"),
+    content_type = mime if mime == "application/zip" else mime + "; charset=utf-8"
+    start_response(status, headers + [("Content-Type", content_type),
                                      ("Content-Length", str(len(body)))])
     return [body]
 
