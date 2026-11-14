@@ -585,10 +585,15 @@ def record_accounting(db, data, kind, old=None):
         description = f"{article['code']} · {article['name']}" if article["code"] else article["name"]
         unit = old["unit"] if same_article else article["unit_name"]
         unit_cost = old["unit_cost"] if same_article else article["cost"]
-        if not unit_cost:
-            raise Problem("Imposta un costo unitario positivo nella scheda dell’articolo di base.")
-        if not same_article and (amount(data.get("unit_cost")) != unit_cost or integer(data.get("unit")) != article["unit"]):
-            raise Problem("Costo o unità sono cambiati. Aggiorna la pagina e riprova.", "409 Conflict")
+        if old is not None and "purchase_cost" in data:
+            unit_cost = amount(data["purchase_cost"], positive=True)
+            if not same_article and integer(data.get("unit")) != article["unit"]:
+                raise Problem("L’unità è cambiata. Aggiorna la pagina e riprova.", "409 Conflict")
+        else:
+            if not unit_cost:
+                raise Problem("Imposta un costo unitario positivo nella scheda dell’articolo di base.")
+            if not same_article and (amount(data.get("unit_cost")) != unit_cost or integer(data.get("unit")) != article["unit"]):
+                raise Problem("Costo o unità sono cambiati. Aggiorna la pagina e riprova.", "409 Conflict")
         quantity = amount(data.get("quantity"), positive=True)
         check_unit(db, article["unit"], quantity)
         total = ((unit_cost * quantity + SCALE * CENT // 2) // (SCALE * CENT)) * CENT
