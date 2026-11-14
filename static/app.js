@@ -203,6 +203,7 @@ function listing(key) {
     ${canCreate && key !== "users" ? button(label,action,"primary","plus") : ""}
     ${key === "purchases" ? button("Acquisto a lista","purchase-list","recipe-button","plus") : ""}</div></div>
     ${key === "users" ? usersTabs(key) : ""}
+    ${key === "purchases" ? '<div class="purchase-list-sticky">' : ""}
     ${accountingSection(key) ? `<nav class="accounting-nav" aria-label="Gestione Contabilità">${["receipts","purchases"].map(tab =>
       `<a href="#${tab}" ${tab === key ? 'aria-current="page"' : ""}>${tab === "receipts" ? "Incasso/Apporto Socio" : sections[tab][0]}</a>`).join("")}</nav>` : ""}
     ${["units","equivalents"].includes(key) ? `<nav class="accounting-nav" aria-label="Elenchi">
@@ -211,6 +212,7 @@ function listing(key) {
     </nav>` : ""}
     <section class="panel"><div class="panel-heading">${key === "users" ? '<div class="users-toolbar">' : ""}<label class="search">${icon("search")}<input type="search" id="search" aria-label="${placeholder}" placeholder="${placeholder}" value="${escape(query)}"></label>${key === "users" ? button(label,action,"primary","plus") + "</div>" : ""}<span class="count" id="count" aria-live="polite"></span></div>
     <div id="results">${table(key,filtered(key))}</div></section>
+    ${key === "purchases" ? "</div>" : ""}
     ${key === "purchases" ? '<div class="purchase-search-total" id="purchase-search-total" role="status" hidden></div>' : ""}`;
 }
 
