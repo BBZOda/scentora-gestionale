@@ -334,3 +334,16 @@ form[data-form="purchase-list"] [data-action="add-purchase-line"] { justify-self
 .purchase-actions .button { min-width: 34px; min-height: 34px; padding: 4px 8px; }
 
 .purchase-search-total { width: min(100%, 520px); padding: 15px 18px; border-radius: var(--radius); background: var(--surface); color: var(--ink); font-size: 17px; font-weight: 700; }
+
+.cost-analysis { padding: clamp(14px, 2.5vw, 28px); }
+.cost-analysis > label { max-width: 420px; }
+.cost-analysis h2 { margin: 24px 0 12px; font-size: 27px; }
+.cost-analysis table { min-width: 560px; }
+.analysis-metrics { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,155px),1fr)); gap: 9px; margin: 18px 0; }
+.analysis-metrics div { padding: 12px; border-radius: var(--radius); background: #efe5d9; }
+.analysis-metrics dt { font-size: 13px; }
+.analysis-metrics dd { margin: 5px 0 0; font-size: 21px; font-weight: 700; }
+#analysis-result .analysis-metrics div { background: #e5eee1; }
+.analysis-extra td { padding-block: 6px; }
+.analysis-extra [data-extra-cost] { min-width: 110px; }
+.analysis-extra input[aria-invalid="true"] { border-color: var(--error); }
