@@ -334,21 +334,3 @@ form[data-form="purchase-list"] [data-action="add-purchase-line"] { justify-self
 .purchase-actions .button { min-width: 34px; min-height: 34px; padding: 4px 8px; }
 
 .purchase-search-total { width: min(100%, 520px); padding: 15px 18px; border-radius: var(--radius); background: var(--surface); color: var(--ink); font-size: 17px; font-weight: 700; }
-
-.purchase-list-sticky {
-  position: sticky;
-  top: 65px;
-  z-index: 1;
-  min-width: 0;
-  display: grid;
-  gap: 14px;
-  padding-top: 8px;
-  background: #352019;
-}
-.purchase-list-sticky .table-wrap { max-height: max(190px, calc(100dvh - 235px)); }
-.purchase-list-sticky thead th { position: sticky; top: 0; z-index: 1; }
-@media (max-width: 620px) {
-  .purchase-list-sticky .accounting-nav { flex-wrap: nowrap; overflow-x: auto; }
-  .purchase-list-sticky .accounting-nav a { flex: none; }
-  .purchase-list-sticky .table-wrap { max-height: max(140px, calc(100dvh - 275px)); }
-}
