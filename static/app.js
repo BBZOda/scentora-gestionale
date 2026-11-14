@@ -701,6 +701,11 @@ document.addEventListener("change", event => {
   if (!lines.length) return;
   dialog.querySelector("#recipe-lines").innerHTML = lines.map(line => recipeLine(line)).join("");
   event.target.value = "";
+  const picker = dialog.querySelector("#recipe-copy-picker");
+  const trigger = dialog.querySelector('[data-action="show-recipe-copy"]');
+  picker.hidden = true;
+  trigger.setAttribute("aria-expanded","false");
+  trigger.focus();
   updatePreview();
   notify("Distinta caricata nella scheda. Premi Salva per confermare.");
 });
