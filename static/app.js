@@ -291,7 +291,23 @@ function recipeLine(line = {}) {
     <span class="line-meta"></span></div>`;
 }
 
-function modal(action,id) {
+function perfumeFormSnapshot(form) {
+  const fields = new FormData(form);
+  fields.delete("recipeSource");
+  return JSON.stringify([...fields]);
+}
+
+function perfumeNavigation(id) {
+  const index = state.perfumes.findIndex(item => item.id === id);
+  return [-1,1].map(direction => {
+    const label = direction < 0 ? "Profumo precedente" : "Profumo successivo";
+    const target = state.perfumes[index + direction];
+    return `<button type="button" class="icon-button perfume-step" aria-label="${label}" title="${label}"
+      data-action="step-perfume:${target?.id ?? ""}" ${target ? "" : "disabled"}>${direction < 0 ? "‹" : "›"}</button>`;
+  }).join("");
+}
+
+function modal(action,id,keepEquivalences = false) {
   const item = id ? ({
     article:state.articles, stock:state.articles, perfume:state.perfumes,
     produce:state.perfumes, user:state.users, customer:state.customers, supplier:state.suppliers,
@@ -389,19 +405,20 @@ function modal(action,id) {
         ${select("Stato","active",`<option value="true">Attivo</option><option value="false" ${item?.active === 0 ? "selected" : ""}>Disattivato</option>`)}</div>`;
       break;
   }
-  dialog.innerHTML = `<div class="dialog-heading"><h2 id="dialog-title">${title}</h2><button class="icon-button" data-action="close" aria-label="Chiudi">${icon("close")}</button></div>
+  dialog.innerHTML = `<div class="dialog-heading"><h2 id="dialog-title">${title}</h2><div class="dialog-heading-actions">${action === "perfume" && item ? perfumeNavigation(id) : ""}
+      <button type="button" class="icon-button" data-action="close" aria-label="Chiudi">${icon("close")}</button></div></div>
     <form data-form="${action}" data-id="${id || ""}">
       <div class="dialog-content">${fields}<p class="form-error" role="alert" hidden></p></div>
       <div class="dialog-actions">${item && ["article","customer","supplier"].includes(action)
         ? button("Elimina",`confirm-${action}-delete:${item.id}`,"article-delete delete-start") : ""}
-        ${action === "perfume" ? `${recipeCopyControls(id)}
+        ${action === "perfume" ? `<div class="perfume-footer-tools">${recipeCopyControls(id)}
           <button type="button" class="button secondary" data-action="toggle-equivalences"
-            aria-controls="recipe-equivalences" aria-expanded="false">Vis. Tabella Equivalenze</button>` : ""}
+            aria-controls="recipe-equivalences" aria-expanded="${keepEquivalences}">Vis. Tabella Equivalenze</button></div>` : ""}
         ${button("Annulla","close")}<button class="button primary" type="submit">${label}</button></div>
     </form>`;
   if (action === "perfume") {
     dialog.innerHTML = `<div class="perfume-editor">${dialog.innerHTML}</div>
-      <aside id="recipe-equivalences" aria-labelledby="recipe-equivalences-title" hidden>
+      <aside id="recipe-equivalences" aria-labelledby="recipe-equivalences-title" ${keepEquivalences ? "" : "hidden"}>
         <div class="dialog-heading"><h2 id="recipe-equivalences-title">Tabella Equivalenze</h2>
           <button type="button" class="icon-button" data-action="toggle-equivalences"
             aria-label="Chiudi Tabella Equivalenze">${icon("close")}</button></div>
@@ -411,7 +428,11 @@ function modal(action,id) {
   if (action === "receipt" || action === "purchase" || action === "unload") {
     dialog.querySelector("form").dataset.requestKey = crypto.randomUUID();
   }
-  dialog.showModal();
+  if (action === "perfume") {
+    const form = dialog.querySelector("form");
+    form.dataset.initialFields = perfumeFormSnapshot(form);
+  }
+  if (!dialog.open) dialog.showModal();
   updatePreview();
 }
 
@@ -695,6 +716,16 @@ document.addEventListener("click", async event => {
     try { await request("logout",{}); renderLogin(); }
     catch (error) { notify(error.message); }
   } else if (action === "ledger") await openLedger(Number(id));
+  else if (action === "step-perfume") {
+    const form = dialog.querySelector('form[data-form="perfume"]');
+    if (!id || !form || form.querySelector('[type="submit"]').disabled) return;
+    if (form.dataset.initialFields !== perfumeFormSnapshot(form)
+      && !window.confirm("Ci sono modifiche da salvare. Passare a un altro profumo senza salvarle?")) return;
+    modal("perfume",Number(id),!dialog.querySelector("#recipe-equivalences").hidden);
+    const steps = [...dialog.querySelectorAll(".perfume-step")];
+    const nextFocus = steps[control.textContent.trim() === "‹" ? 0 : 1];
+    (nextFocus?.disabled ? steps.find(step => !step.disabled) : nextFocus)?.focus();
+  }
   else if (action === "toggle-equivalences") {
     const panel = dialog.querySelector("#recipe-equivalences");
     const trigger = dialog.querySelector(".dialog-actions [data-action='toggle-equivalences']");

@@ -292,3 +292,9 @@ dialog:has(#recipe-equivalences:not([hidden])) { width: min(1290px, calc(100% - 
 @media (max-width: 900px) {
   #recipe-equivalences { border-top: 1px solid var(--line); }
 }
+
+.dialog-heading-actions { display: flex; align-items: center; gap: 4px; }
+.perfume-step { font-size: 25px; line-height: 1; background: #dfceb2; }
+.perfume-step:disabled { opacity: .4; cursor: default; }
+.perfume-footer-tools { display: flex; align-items: flex-start; flex-wrap: wrap; gap: 8px; margin-inline-end: auto; }
+.perfume-footer-tools .recipe-copy { margin-inline-end: 0; }
