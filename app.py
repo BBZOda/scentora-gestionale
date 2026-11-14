@@ -278,7 +278,7 @@ def state(db, user):
         "recipes": rows(db, "SELECT * FROM recipes ORDER BY perfume,article"),
         "customers": rows(db, "SELECT * FROM contacts WHERE kind='customer' AND archived=0 ORDER BY name COLLATE NOCASE,id"),
         "suppliers": rows(db, "SELECT * FROM contacts WHERE kind='supplier' AND archived=0 ORDER BY name COLLATE NOCASE,id"),
-        "accounting": rows(db, """SELECT m.id,m.occurred_on,m.description,m.amount,c.name AS contact,
+        "accounting": rows(db, """SELECT m.id,m.occurred_on,m.description,m.amount,m.contact_id,c.name AS contact,
                                   c.kind,d.perfume_id,d.unit,d.unit_cost,d.quantity,d.notes
                                   FROM accounting_details d JOIN contact_movements m ON m.id=d.movement_id
                                   JOIN contacts c ON c.id=m.contact_id ORDER BY m.occurred_on DESC,m.id DESC"""),
