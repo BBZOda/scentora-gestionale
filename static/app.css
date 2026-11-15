@@ -430,12 +430,12 @@ th .button[data-action="supplier-totals"]:hover { background: #b5d2b8; }
   .fixed-list-page thead th { position: sticky; top: 0; z-index: 1; }
 }
 
-table[aria-label="Clienti"] td[data-label="Contabile"] .button,
+table[aria-label="Apporto Soci"] td[data-label="Contabile"] .button,
 table[aria-label="Fornitori"] td[data-label="Contabile"] .button {
   background: #d3e2ed;
   color: var(--ink);
 }
-table[aria-label="Clienti"] td[data-label="Contabile"] .button:hover,
+table[aria-label="Apporto Soci"] td[data-label="Contabile"] .button:hover,
 table[aria-label="Fornitori"] td[data-label="Contabile"] .button:hover { background: #bfd5e5; }
 
 .button[data-action="clear-purchase-date"] {
