@@ -453,3 +453,16 @@ form[data-form="equipment-list"] .dialog-content { display: grid; gap: 16px; }
 form[data-form="equipment-list"] [data-action="add-equipment-line"] { justify-self: start; }
 .equipment-lines { min-width: 550px; }
 .equipment-lines td:nth-child(2) { width: 120px; }
+
+.perfume-name-cell { display: flex; align-items: center; gap: 10px; }
+.photo-thumbnail,.perfume-photo-preview,.analysis-photo { display: grid; place-items: center; overflow: hidden; background: #e7d8c8; color: #6f4935; border-radius: 8px; }
+.photo-thumbnail { width: 42px; height: 42px; padding: 0; border: 1px solid #c7ab94; flex: none; cursor: pointer; }
+.photo-thumbnail img,.perfume-photo-preview img,.analysis-photo img { width: 100%; height: 100%; object-fit: contain; }
+.photo-thumbnail svg,.perfume-photo-preview svg { width: 55%; height: 55%; }
+.perfume-photo-editor { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-block: 12px; }
+.perfume-photo-preview,.analysis-photo { width: 96px; height: 96px; }
+.photo-controls { display: grid; gap: 6px; min-width: 0; }
+.photo-picker input { max-width: min(270px, 65vw); }
+.photo-gallery .perfume-photo-editor { justify-content: center; }
+.photo-gallery .perfume-photo-preview { width: min(320px, 76vw); height: min(320px, 76vw); }
+.analysis-photo { margin-top: 12px; }
