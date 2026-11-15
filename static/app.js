@@ -574,6 +574,15 @@ const select = (label,name,choices,required = true) =>
 const units = id => select("Unità di misura","unit",options(state.units,id));
 const selected = (a,b) => a === b ? "selected" : "";
 
+function equipmentLine() {
+  return `<tr>
+    <td><input name="description" aria-label="Descrizione" maxlength="200" required></td>
+    <td><input name="amount" aria-label="Importo (€)" inputmode="decimal" maxlength="22" required></td>
+    <td><input name="notes" aria-label="Note" maxlength="1000"></td>
+    <td><button type="button" class="icon-button" data-action="remove-equipment-line" aria-label="Rimuovi riga">${icon("close")}</button></td>
+  </tr>`;
+}
+
 function purchaseLine() {
   return `<tr><td data-purchase-code></td>
     <td><select name="article" aria-label="Descrizione Articolo" required>${options(state.articles,null,articleLabel)}</select></td>
@@ -736,6 +745,17 @@ function modal(action,id,keepEquivalences = false) {
         <label class="notes-field">Note<textarea name="note" rows="3" maxlength="1000">${escape(original?.notes)}</textarea></label>`;
       break;
     }
+    case "equipment-list":
+      if (!state.suppliers.length) return notify("Crea prima un fornitore.");
+      title = "Attrezzi a lista";
+      fields = `<div class="form-grid">
+        ${input("Data","data",today.format(new Date()),'type="date" required')}
+        ${select("Fornitore","supplier_id",options(state.suppliers))}
+        </div><div class="table-wrap" tabindex="0" role="region" aria-label="Attrezzi da registrare">
+          <table class="equipment-lines"><thead><tr><th scope="col">Descrizione</th><th scope="col">Importo (€)</th>
+            <th scope="col">Note</th><th scope="col">Azioni</th></tr></thead><tbody>${equipmentLine()}</tbody></table>
+        </div>${button("Aggiungi attrezzo","add-equipment-line","secondary","plus")}`;
+      break;
     case "equipment": {
       if (id && !item) return;
       const suppliers = [...state.suppliers];
@@ -767,6 +787,7 @@ function modal(action,id,keepEquivalences = false) {
       break;
   }
   dialog.innerHTML = `<div class="dialog-heading"><h2 id="dialog-title">${title}</h2><div class="dialog-heading-actions">${action === "perfume" && item ? perfumeNavigation(id) : ""}
+    ${action === "equipment" && !item ? button("Carica a lista","open-equipment-list","recipe-button","plus") : ""}
       <button type="button" class="icon-button" data-action="close" aria-label="Chiudi">${icon("close")}</button></div></div>
     <form data-form="${action}" data-id="${id || ""}">
       <div class="dialog-content">${fields}<p class="form-error" role="alert" hidden></p></div>
@@ -788,7 +809,7 @@ function modal(action,id,keepEquivalences = false) {
         ${table("equivalents",state.equivalents ?? [])}
       </aside>`;
   }
-  if (action === "receipt" || action === "purchase" || action === "edit-purchase" || action === "purchase-list" || action === "unload") {
+  if (action === "receipt" || action === "purchase" || action === "edit-purchase" || action === "purchase-list" || action === "equipment-list" || action === "unload") {
     dialog.querySelector("form").dataset.requestKey = crypto.randomUUID();
   }
   if (action === "perfume") {
@@ -1007,6 +1028,13 @@ function formData(form) {
   }
   if (action === "produce" || action === "unload") data.id = Number(data.perfume);
   if (action === "unload") data.request_key = form.dataset.requestKey;
+  if (action === "equipment-list") {
+    return {
+      data: data.data, supplier_id: Number(data.supplier_id), request_key: form.dataset.requestKey,
+      lines: [...form.querySelectorAll(".equipment-lines tbody tr")].map(row =>
+        Object.fromEntries([...row.querySelectorAll("input")].map(field => [field.name,field.value]))),
+    };
+  }
   if (action === "equipment") data.supplier_id = Number(data.supplier_id);
   if (action === "user") data.active = data.active === "true";
   if (action === "customer" || action === "supplier") data.kind = action;
@@ -1131,6 +1159,7 @@ document.addEventListener("submit", async event => {
       "edit-purchase": "Acquisto modificato.",
       "delete-purchase": "Acquisto eliminato.",
       "purchase-list": "Acquisti registrati e giacenze aggiornate.",
+      "equipment-list": "Attrezzi registrati.",
       "delete-article": "Articolo eliminato.",
       "delete-contact": "Scheda eliminata.",
       "edit-movement": "Movimento modificato e giacenze aggiornate.",
@@ -1181,7 +1210,25 @@ document.addEventListener("click", async event => {
     control.innerHTML = icon(navOpen ? "close" : "menu");
   } else if (action === "close") dialog.close();
   else if (action === "open-archives" && section() === "archives") openArchives();
-  else if (action === "add-purchase-line") {
+  else if (action === "open-equipment-list") {
+    const draft = new FormData(dialog.querySelector('form[data-form="equipment"]'));
+    modal("equipment-list");
+    const form = dialog.querySelector('form[data-form="equipment-list"]');
+    for (const field of ["data","supplier_id","description","amount","notes"]) {
+      form.elements[field].value = draft.get(field) ?? "";
+    }
+    form.elements.description.focus();
+  } else if (action === "add-equipment-line") {
+    const lines = dialog.querySelector(".equipment-lines tbody");
+    if (lines.rows.length >= 50) return notify("Puoi inserire fino a 50 righe per lista.");
+    lines.insertAdjacentHTML("beforeend",equipmentLine());
+    lines.lastElementChild.querySelector("input").focus();
+  } else if (action === "remove-equipment-line") {
+    const row = control.closest("tr");
+    if (row.parentElement.rows.length <= 1) return notify("La lista deve contenere almeno un attrezzo.");
+    row.remove();
+    dialog.querySelector('[data-action="add-equipment-line"]').focus();
+  } else if (action === "add-purchase-line") {
     const lines = dialog.querySelector(".purchase-lines tbody");
     if (lines.rows.length >= 50) return notify("Puoi inserire fino a 50 righe per lista.");
     lines.insertAdjacentHTML("beforeend",purchaseLine());
