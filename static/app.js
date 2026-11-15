@@ -140,7 +140,7 @@ function render() {
         ${state.demo ? "" : `<button class="icon-button" data-action="logout" aria-label="Esci">${icon("logout")}</button>`}
       </div>
     </aside>
-    <main id="main" tabindex="-1"${current === "perfumes" ? ' class="perfume-page"' : ""}>
+    <main id="main" tabindex="-1"${["perfumes","articles"].includes(current) ? ' class="fixed-list-page"' : ""}>
       <header class="topbar">
         <button class="icon-button menu-button" data-action="menu" aria-label="Menu principale" aria-expanded="${navOpen}" aria-controls="sidebar">${icon(navOpen ? "close" : "menu")}</button>
         <span class="breadcrumb">Scentora <span aria-hidden="true">/</span> ${sections[current][0]}</span>
