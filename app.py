@@ -22,7 +22,7 @@ DEMO = os.getenv("SCENTORA_DEMO") == "1"
 DB = os.getenv("SCENTORA_DB", str(ROOT / "scentora.sqlite"))
 SESSION_SECONDS = 12 * 3600
 PASSWORD_MIN = 5
-SCHEMA_VERSION = 16
+SCHEMA_VERSION = 17
 SCALE = 1_000_000
 CENT = SCALE // 100
 MAX_VALUE = 1_000_000_000 * SCALE
@@ -178,6 +178,8 @@ def migrate_schema(db):
             id INTEGER PRIMARY KEY, occurred_on TEXT NOT NULL, description TEXT NOT NULL,
             amount INTEGER NOT NULL CHECK(amount >= 0),
             supplier_id INTEGER NOT NULL REFERENCES contacts(id), notes TEXT NOT NULL)""")
+    if version < 17:
+        db.execute("CREATE TABLE equipment_batches (request_key TEXT PRIMARY KEY, fingerprint TEXT NOT NULL)")
     db.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
 
@@ -585,6 +587,33 @@ def save_equipment(db, data):
     })
 
 
+def save_equipment_list(db, data):
+    key = data.get("request_key")
+    if not isinstance(key, str) or not re.fullmatch(r"[a-f0-9-]{36}", key):
+        raise Problem("Riapri la maschera per registrare la lista.")
+    lines = data.get("lines")
+    if not isinstance(lines, list) or not 1 <= len(lines) <= 50:
+        raise Problem("Inserisci da 1 a 50 attrezzi.")
+    fingerprint = hashlib.sha256(json.dumps(data, sort_keys=True).encode()).hexdigest()
+    previous = db.execute("SELECT fingerprint FROM equipment_batches WHERE request_key=?", (key,)).fetchone()
+    if previous:
+        if previous["fingerprint"] != fingerprint:
+            raise Problem("La lista è già stata registrata. Riapri la maschera.", "409 Conflict")
+        return
+    for index, line in enumerate(lines, 1):
+        if not isinstance(line, dict):
+            raise Problem(f"Riga {index} non valida.")
+        try:
+            save_equipment(db, {
+                "data": data.get("data"), "supplier_id": data.get("supplier_id"),
+                "description": line.get("description"), "amount": line.get("amount"),
+                "notes": line.get("notes", ""),
+            })
+        except Problem as error:
+            raise Problem(f"Riga {index} · {error}", error.status) from error
+    db.execute("INSERT INTO equipment_batches VALUES (?,?)", (key,fingerprint))
+
+
 def delete_contact(db, data):
     contact_id = integer(data.get("id"))
     contact = get_row(db, "SELECT kind,archived FROM contacts WHERE id=?", (contact_id,))
@@ -933,6 +962,8 @@ def api(env, path, method):
             record_purchase_list(db, data)
         elif action in ("receipt", "purchase"):
             record_accounting(db, data, "customer" if action == "receipt" else "supplier")
+        elif action == "equipment-list":
+            save_equipment_list(db, data)
         elif action == "equipment":
             save_equipment(db, data)
         elif action == "delete-equipment":
