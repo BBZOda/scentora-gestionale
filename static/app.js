@@ -216,17 +216,23 @@ function analysisPage() {
     </section>`;
 }
 
-function analysisMetrics(perfume, net, total) {
+function analysisMetricValues(perfume, net, total) {
   const profit = net - total / scale;
-  const pairs = [
+  return [
     ["Prezzo vendita",saleMoney.format(perfume.price / scale)],
-    ["Prezzo vendita imponibile",saleMoney.format(net)],
+    ["Prezzo vendita imponibile",net === null ? "—" : saleMoney.format(net)],
     ["Costo totale distinta",euro(total)],
     ["Margine %",net > 0 ? marginPercent.format(profit / net) : "—"],
-    ["Margine valore",saleMoney.format(profit)],
+    ["Margine valore",net === null ? "—" : saleMoney.format(profit)],
   ];
-  return `<dl class="analysis-metrics">${pairs.map(([label,value]) =>
-    `<div><dt>${label}</dt><dd>${value}</dd></div>`).join("")}</dl>`;
+}
+
+function analysisMetrics(perfume, net, total, editable = false) {
+  return `<dl class="analysis-metrics"${editable ? ' id="analysis-base-metrics"' : ""}>${analysisMetricValues(perfume,net,total).map(([label,value],index) =>
+    editable && index === 0
+      ? `<div><dt><label for="scenario-price">Prezzo vendita simulato (€)</label></dt>
+        <dd><input id="scenario-price" inputmode="decimal" maxlength="14" value="${(perfume.price / scale).toFixed(2).replace(".",",")}"></dd></div>`
+      : `<div><dt>${label}</dt><dd>${value}</dd></div>`).join("")}</dl>`;
 }
 
 function showAnalysis(selectField) {
@@ -241,7 +247,7 @@ function showAnalysis(selectField) {
   const net = Math.round(perfume.price / scale * 100 / (1 + saleVatRate)) / 100;
   const base = cost(perfume.id);
   detail.innerHTML = `${perfume.has_photo ? `<div class="analysis-photo">${perfumePhoto(perfume)}</div>` : ""}
-    ${analysisMetrics(perfume,net,base)}
+    ${analysisMetrics(perfume,net,base,true)}
     <h2>Distinta Art.</h2>
     <div class="table-wrap" tabindex="0" role="region" aria-label="Distinta Art.">
     <table><thead><tr>${["Articolo","Quantità","Costo unitario","Costo totale"].map(label =>
@@ -258,7 +264,6 @@ function showAnalysis(selectField) {
         <td><input data-extra-cost aria-label="Costo aggiuntivo ${index} (€)" placeholder="€" inputmode="decimal" maxlength="18"></td></tr>`).join("")}
     </tbody></table></div>
     <h2>Risultato con costi aggiuntivi</h2>
-    <div class="form-grid"><label>Prezzo vendita simulato (€)<input id="scenario-price" inputmode="decimal" maxlength="14" value="${(perfume.price / scale).toFixed(2).replace(".",",")}"></label></div>
     <div id="analysis-result" aria-live="polite"></div>
     <div class="actions scenario-library">
       <label>Simulazioni salvate<select id="scenario-picker"></select></label>
@@ -269,6 +274,7 @@ function showAnalysis(selectField) {
   const fields = [...detail.querySelectorAll("[data-extra-cost]")];
   const labels = [...detail.querySelectorAll(".analysis-extra td:first-child input")];
   const priceField = detail.querySelector("#scenario-price");
+  const baseMetrics = [...detail.querySelectorAll("#analysis-base-metrics dd")].slice(1);
   const picker = detail.querySelector("#scenario-picker");
   const name = detail.querySelector("#scenario-name");
   const save = detail.querySelector("#scenario-save");
@@ -310,6 +316,9 @@ function showAnalysis(selectField) {
     const validPrice = /^\d{1,9}(?:[.,]\d{1,2})?$/.test(priceField.value.trim());
     const price = Math.round(Number(priceField.value.replace(",",".")) * scale);
     const simulationNet = Math.round(price / scale * 100 / (1 + saleVatRate)) / 100;
+    const simulated = {...perfume,price};
+    analysisMetricValues(simulated,validPrice ? simulationNet : null,base).slice(1)
+      .forEach(([,value],index) => { baseMetrics[index].textContent = value; });
     let invalid = !validPrice;
     priceField.setAttribute("aria-invalid",String(!validPrice));
     for (const field of fields) {
@@ -322,7 +331,7 @@ function showAnalysis(selectField) {
     printButton.disabled = invalid;
     save.disabled = saving || invalid || !name.value.trim();
     result.innerHTML = invalid ? '<p class="form-error">Verifica il prezzo e i costi in euro.</p>'
-      : analysisMetrics({...perfume,price},simulationNet,total);
+      : analysisMetrics(simulated,simulationNet,total);
   };
   for (const field of [...fields,priceField,name]) field.addEventListener("input",update);
   update();
