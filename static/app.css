@@ -395,3 +395,6 @@ form[data-form="purchase-list"] [data-action="add-purchase-line"] { justify-self
 
 .supplier-total-footer { flex-wrap: wrap; }
 .supplier-total-footer > strong { margin-inline-end: auto; }
+
+.hero-site-link { position: absolute; inset-inline-end: clamp(16px, 7%, 105px); bottom: 16px; white-space: nowrap; }
+@media (max-width: 620px) { .hero:has(.hero-site-link) { padding-bottom: 60px; } }
