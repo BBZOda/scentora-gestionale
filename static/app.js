@@ -423,13 +423,30 @@ function perfumePhoto(item) {
 
 function photoControls(item) {
   return `<section class="perfume-photo-editor" data-photo-editor="${item.id}">
-    <div class="perfume-photo-preview">${perfumePhoto(item)}</div>
+    ${item.has_photo ? `<button type="button" class="perfume-photo-preview photo-zoom-trigger" data-action="zoom-perfume-photo:${item.id}" aria-label="Ingrandisci foto di ${escape(item.name)}" title="Ingrandisci foto">${perfumePhoto(item)}</button>`
+      : `<div class="perfume-photo-preview">${perfumePhoto(item)}</div>`}
     <div class="photo-controls">
       <label class="photo-picker">${item.has_photo ? "Sostituisci foto" : "Carica foto"}
         <input type="file" class="perfume-photo-input" accept="image/jpeg,image/png,image/webp"></label>
       ${item.has_photo ? button("Rimuovi foto","remove-perfume-photo","secondary") : ""}
     </div>
   </section>`;
+}
+
+function zoomPerfumePhoto(id) {
+  const item = state.perfumes.find(perfume => perfume.id === id);
+  if (!item?.has_photo) return;
+  const viewer = document.createElement("dialog");
+  viewer.className = "photo-viewer";
+  viewer.setAttribute("aria-label","Foto di " + item.name);
+  viewer.innerHTML = `<button type="button" class="icon-button photo-viewer-close" aria-label="Chiudi foto" autofocus>${icon("close")}</button>${perfumePhoto(item)}`;
+  viewer.querySelector("button").addEventListener("click",() => viewer.close());
+  viewer.addEventListener("click",event => {
+    if (event.target === viewer) viewer.close();
+  });
+  viewer.addEventListener("close",() => viewer.remove(),{once:true});
+  document.body.append(viewer);
+  viewer.showModal();
 }
 
 function openPerfumePhoto(id) {
@@ -1394,6 +1411,7 @@ document.addEventListener("click", async event => {
   const [action,id] = control.dataset.action.split(":");
   if (action === "print-page" || action === "print-dialog") printReport(action === "print-dialog");
   else if (action === "supplier-totals") openSupplierTotals(Number(id));
+  else if (action === "zoom-perfume-photo") zoomPerfumePhoto(Number(id));
   else if (action === "perfume-photo") openPerfumePhoto(Number(id));
   else if (action === "remove-perfume-photo") {
     const container = control.closest("[data-photo-editor]");
