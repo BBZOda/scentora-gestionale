@@ -340,27 +340,20 @@ function printReport(fromDialog) {
 
 const stockValue = item => BigInt(item.cost) * BigInt(item.stock);
 
-function stockMoney(value, divisor = purchaseDivisor) {
-  const cents = (value + divisor / 2n) / divisor;
+function stockMoney(value) {
+  const cents = (value + purchaseDivisor / 2n) / purchaseDivisor;
   return saleMoney.formatToParts(cents / 100n).map(part =>
     part.type === "fraction" ? String(cents % 100n).padStart(2,"0") : part.value).join("");
 }
 
 function totalStockMoney() {
-  const articleValue = state.articles.reduce((sum,item) => sum + stockValue(item),0n);
-  const perfumeValue = state.perfumes.reduce((sum,perfume) => {
-    if (!perfume.stock) return sum;
-    const unitCost = recipe(perfume.id).reduce((cost,line) =>
-      cost + BigInt(article(line.article)?.cost ?? 0) * BigInt(line.amount),0n);
-    return sum + unitCost * BigInt(perfume.stock);
-  },0n);
-  return stockMoney(articleValue * BigInt(scale) + perfumeValue,purchaseDivisor * BigInt(scale));
+  return stockMoney(state.articles.reduce((sum,item) => sum + stockValue(item),0n));
 }
 
 function openStockValue() {
   dialog.innerHTML = `<div class="dialog-heading"><h2 id="dialog-title">Valore magazzino</h2>
     <button type="button" class="icon-button" data-action="close" aria-label="Chiudi">${icon("close")}</button></div>
-    <div class="dialog-content"><p>Valore totale di articoli di base e profumi in giacenza</p><strong class="stock-value-total">${totalStockMoney()}</strong></div>
+    <div class="dialog-content"><p>Valore totale degli articoli di base in giacenza</p><strong class="stock-value-total">${totalStockMoney()}</strong></div>
     <div class="dialog-actions">${button("Chiudi","close")}</div>`;
   dialog.showModal();
 }
