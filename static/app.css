@@ -475,3 +475,9 @@ form[data-form="equipment-list"] [data-action="add-equipment-line"] { justify-se
 .photo-viewer img { display: block; width: auto; height: auto; max-width: min(900px,calc(100vw - 26px)); max-height: calc(100dvh - 26px); }
 .photo-viewer-close { position: absolute; top: 8px; right: 8px; z-index: 1; background: #f5eee7; color: var(--ink); }
 .photo-viewer-close:hover { background: #fff; }
+
+.equipment-total { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; font-size: 17px; }
+.equipment-total > * { padding: 14px 18px; border-radius: var(--radius); background: var(--surface); color: var(--ink); }
+.equipment-total > span { font-weight: 700; }
+.equipment-total > strong { background: #c8deca; }
+@media print { .print-report .equipment-total { margin-top: 10pt; break-inside: avoid; } }
