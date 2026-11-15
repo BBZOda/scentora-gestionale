@@ -424,3 +424,9 @@ table[aria-label="Fornitori"] td[data-label="Contabile"] .button {
 }
 table[aria-label="Clienti"] td[data-label="Contabile"] .button:hover,
 table[aria-label="Fornitori"] td[data-label="Contabile"] .button:hover { background: #bfd5e5; }
+
+.button[data-action="clear-purchase-date"] {
+  align-self: flex-end;
+  min-height: 44px;
+  padding-inline: 12px;
+}
