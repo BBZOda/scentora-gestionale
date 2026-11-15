@@ -629,13 +629,24 @@ function openSupplierTotals(id) {
     if (item.kind !== "supplier") continue;
     totals.set(item.contact_id,(totals.get(item.contact_id) ?? 0n) + BigInt(item.amount));
   }
-  const total = suppliers.reduce((sum,supplier) => sum + (totals.get(supplier.id) ?? 0n),0n);
+  const equipmentTotals = new Map();
+  for (const item of state.equipment) {
+    equipmentTotals.set(item.supplier_id,(equipmentTotals.get(item.supplier_id) ?? 0n) + BigInt(item.amount));
+  }
+  const total = suppliers.reduce((sum,supplier) =>
+    sum + (totals.get(supplier.id) ?? 0n) + (equipmentTotals.get(supplier.id) ?? 0n),0n);
   dialog.innerHTML = `<div class="dialog-heading"><h2 id="dialog-title">Acquisti per fornitore</h2>
     <button type="button" class="icon-button" data-action="close" aria-label="Chiudi">${icon("close")}</button></div>
     <div class="dialog-content">${suppliers.length ? `<div class="table-wrap" tabindex="0" role="region" aria-label="Acquisti per fornitore">
-      <table><thead><tr><th scope="col">Fornitore</th><th scope="col">Valore acquistato</th></tr></thead>
-      <tbody>${suppliers.map(supplier => `<tr>${cell("Fornitore",escape(supplier.name))}
-        ${cell("Valore acquistato",stockMoney((totals.get(supplier.id) ?? 0n) * BigInt(scale)),"numeric")}</tr>`).join("")}
+      <table><thead><tr><th scope="col">Fornitore</th><th scope="col">Articoli di base</th><th scope="col">Attrezzi per Produzione</th><th scope="col">Valore acquistato</th></tr></thead>
+      <tbody>${suppliers.map(supplier => {
+        const articles = totals.get(supplier.id) ?? 0n;
+        const equipment = equipmentTotals.get(supplier.id) ?? 0n;
+        return `<tr>${cell("Fornitore",escape(supplier.name))}
+          ${cell("Articoli di base",stockMoney(articles * BigInt(scale)),"numeric")}
+          ${cell("Attrezzi per Produzione",stockMoney(equipment * BigInt(scale)),"numeric")}
+          ${cell("Valore acquistato",stockMoney((articles + equipment) * BigInt(scale)),"numeric")}</tr>`;
+      }).join("")}
       </tbody></table></div>` : "<p>Nessun fornitore presente.</p>"}</div>
     <div class="dialog-actions supplier-total-footer"><strong class="numeric">Totale acquisti · ${stockMoney(total * BigInt(scale))}</strong>${button("STAMPA","print-dialog","recipe-button")}${button("Chiudi","close")}</div>`;
   dialog.showModal();
@@ -1320,8 +1331,9 @@ function formData(form) {
 async function openLedger(id) {
   const contact = [...state.customers, ...state.suppliers].find(item => item.id === id);
   const movement = state.accounting.find(item => item.contact_id === id);
-  const name = contact?.name ?? movement?.contact;
-  const kind = contact?.kind ?? movement?.kind;
+  const equipment = state.equipment.filter(item => item.supplier_id === id);
+  const name = contact?.name ?? movement?.contact ?? equipment[0]?.contact;
+  const kind = contact?.kind ?? movement?.kind ?? (equipment.length ? "supplier" : null);
   if (!name) return;
   const category = kind === "customer" ? "Incassi" : "Acquisto Articoli";
   dialog.innerHTML = `<div class="dialog-heading"><h2 id="dialog-title">Contabile · ${escape(name)}</h2>
@@ -1344,7 +1356,19 @@ async function openLedger(id) {
         ${cell("Totale",euro(movements.reduce((sum,item) => sum + item.amount,0)),"numeric")}<td></td>
       </tr></tfoot></table></div>`
       : `<p><strong>Nessun movimento registrato.</strong></p><p>Qui compariranno i movimenti della sezione ${category} in Gestione Contabilità.</p>`;
-    content.innerHTML = detail;
+    const equipmentRows = kind === "supplier" ? equipment : [];
+    const equipmentTotal = equipmentRows.reduce((sum,item) => sum + BigInt(item.amount),0n);
+    const grandTotal = movements.reduce((sum,item) => sum + BigInt(item.amount),equipmentTotal);
+    const out = amount => stockMoney(amount * BigInt(scale));
+    const equipmentDetail = equipmentRows.length ? `<h3>Attrezzi per Produzione</h3>
+      <div class="table-wrap" tabindex="0" role="region" aria-label="Attrezzi per Produzione">
+        <table><thead><tr><th scope="col">Data</th><th scope="col">Descrizione</th><th scope="col">Importo</th><th scope="col">Note</th></tr></thead>
+        <tbody>${equipmentRows.map(item => `<tr>${cell("Data",shortDate(item.occurred_on))}
+          ${cell("Descrizione",escape(item.description))}${cell("Importo",saleMoney.format(item.amount / scale),"numeric")}${cell("Note",escape(item.notes),"notes-cell")}</tr>`).join("")}</tbody>
+        </table></div><p>Totale attrezzi · <strong>${out(equipmentTotal)}</strong></p>` : "";
+    const totalLine = equipmentRows.length ? `<p><strong>Totale acquisti · ${out(grandTotal)}</strong></p>` : "";
+    const fullDetail = (equipmentRows.length && !movements.length ? "" : detail) + equipmentDetail + totalLine;
+    content.innerHTML = fullDetail;
     const toggle = dialog.querySelector("#ledger-notes");
     if (toggle && movements.length) {
       const totals = new Map();
@@ -1361,7 +1385,7 @@ async function openLedger(id) {
       toggle.disabled = false;
       toggle.addEventListener("click", () => {
         showSummary = !showSummary;
-        content.innerHTML = showSummary ? summary : detail;
+        content.innerHTML = showSummary ? summary + equipmentDetail + totalLine : fullDetail;
         toggle.textContent = showSummary ? "VEDI MOVIMENTI" : "ELENCO SEPARATO";
         dialog.scrollTop = 0;
       });
