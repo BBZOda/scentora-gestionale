@@ -57,6 +57,7 @@ let state;
 let query = "";
 let purchaseDate = "";
 let purchaseDateOrder = "descending";
+let sortDocumentsByNumber = false;
 let navOpen = false;
 let notificationTimer;
 
@@ -293,7 +294,7 @@ function printableCopy(source) {
     }
   });
   copy.querySelectorAll("td,th").forEach(cell => {
-    const link = cell.querySelector('button[data-action^="ledger:"],button[data-action^="supplier-totals"],button[data-action="sort-purchase-date"]');
+    const link = cell.querySelector('button[data-action^="ledger:"],button[data-action^="supplier-totals"],button[data-action="sort-purchase-date"],button[data-action="sort-document-number"],button[data-action^="purchase-document:"]');
     if (link) link.replaceWith(document.createTextNode(link.textContent));
   });
   copy.querySelectorAll("button,[hidden],.form-error").forEach(node => node.remove());
@@ -353,6 +354,32 @@ function stockMoney(value) {
 
 function totalStockMoney() {
   return stockMoney(state.articles.reduce((sum,item) => sum + stockValue(item),0n));
+}
+
+function openPurchaseDocument(id) {
+  const entry = state.documents.find(item => item.id === id);
+  if (!entry) return;
+  const lines = state.accounting.filter(item => item.kind === "supplier" && item.document_id === id);
+  const total = lines.reduce((sum,item) => sum + BigInt(item.amount),0n);
+  dialog.innerHTML = `<div class="dialog-heading"><h2 id="dialog-title">Documento ${escape(entry.document_number)}</h2>
+    <button type="button" class="icon-button" data-action="close" aria-label="Chiudi">${icon("close")}</button></div>
+    <div class="dialog-content">
+      <p><strong>${escape(entry.contact)}</strong> · ${shortDate(entry.occurred_on)}</p>
+      <div class="table-wrap" tabindex="0" role="region" aria-label="Articoli del documento">
+        <table><thead><tr>${["Articolo","Quantità","Costo unitario","Totale","Note"].map(label =>
+          `<th scope="col">${label}</th>`).join("")}</tr></thead>
+          <tbody>${lines.map(item => `<tr>${cell("Articolo",escape(item.description))}
+            ${cell("Quantità",format(item.quantity) + " " + escape(item.unit),"numeric")}
+            ${cell("Costo unitario",euro(item.unit_cost),"numeric")}
+            ${cell("Totale",euro(item.amount),"numeric")}
+            ${cell("Note",escape(item.notes),"notes-cell")}</tr>`).join("")}</tbody>
+          <tfoot><tr><th scope="row" colspan="3">Totale documento</th>
+            ${cell("Totale",stockMoney(total * BigInt(scale)),"numeric")}<td></td></tr></tfoot>
+        </table>
+      </div>
+    </div>
+    <div class="dialog-actions">${button("STAMPA","print-dialog","recipe-button")}${button("Chiudi","close")}</div>`;
+  dialog.showModal();
 }
 
 function openSupplierTotals(id) {
@@ -418,6 +445,9 @@ function filtered(key) {
     item.contact,item.description,item.notes,
     key === "articles" ? state.suppliers.find(supplier => supplier.id === item.supplier_id)?.name : undefined].some(value =>
     String(value ?? "").toLocaleLowerCase("it").includes(term)));
+  if (key === "documents" && sortDocumentsByNumber) {
+    return matches.sort((a,b) => a.document_number.localeCompare(b.document_number,"it",{numeric:true,sensitivity:"base"}));
+  }
   return key === "purchases" ? matches.sort((a,b) =>
     (purchaseDateOrder === "ascending" ? 1 : -1) * a.occurred_on.localeCompare(b.occurred_on)) : matches;
 }
@@ -485,7 +515,7 @@ function table(key, items, movementActions = key === "movements" && section() ==
           + cell("Contabile",button("Contabile",`ledger:${item.id}`,"inline"))
           + cell("Azioni",button("Modifica",`${item.kind}:${item.id}`,"inline"),"row-actions");
       case "documents":
-        return cell("NUM. DOC",escape(item.document_number)) + cell("Data acquisto",shortDate(item.occurred_on)) + cell("Fornitore",escape(item.contact));
+        return cell("NUM. DOC",button(escape(item.document_number),`purchase-document:${item.id}`,"inline text-link")) + cell("Data acquisto",shortDate(item.occurred_on)) + cell("Fornitore",escape(item.contact));
       case "receipts":
       case "purchases":
         return cell("Data",shortDate(item.occurred_on))
@@ -507,7 +537,9 @@ function table(key, items, movementActions = key === "movements" && section() ==
           + cell("Azioni",button("Modifica",`user:${item.id}`,"inline"),"row-actions");
     }
   }).map(row => `<tr>${row}</tr>`).join("");
-  return `<div class="table-wrap" tabindex="0" role="region" aria-label="Tabella ${sections[key][0]}"><table aria-label="${sections[key][0]}"><thead><tr>${headings.map(label => `<th scope="col"${key === "purchases" && label === "Data" ? ` aria-sort="${purchaseDateOrder}"` : ""}>${key === "purchases" && label === "Data"
+  return `<div class="table-wrap" tabindex="0" role="region" aria-label="Tabella ${sections[key][0]}"><table aria-label="${sections[key][0]}"><thead><tr>${headings.map(label => `<th scope="col"${key === "purchases" && label === "Data" ? ` aria-sort="${purchaseDateOrder}"` : key === "documents" && label === "NUM. DOC" && sortDocumentsByNumber ? ' aria-sort="ascending"' : ""}>${key === "documents" && label === "NUM. DOC"
+    ? button("NUM. DOC ↑","sort-document-number","recipe-button")
+    : key === "purchases" && label === "Data"
     ? button(purchaseDateOrder === "ascending" ? "Data ↑" : "Data ↓","sort-purchase-date","recipe-button")
     : key === "articles" && label === "Fornitore"
     ? '<button type="button" class="button inline text-link" data-action="supplier-totals" title="Totali acquisti per fornitore">Fornitore</button>'
@@ -1083,6 +1115,12 @@ document.addEventListener("click", async event => {
   const [action,id] = control.dataset.action.split(":");
   if (action === "print-page" || action === "print-dialog") printReport(action === "print-dialog");
   else if (action === "supplier-totals") openSupplierTotals(Number(id));
+  else if (action === "purchase-document") openPurchaseDocument(Number(id));
+  else if (action === "sort-document-number") {
+    sortDocumentsByNumber = true;
+    renderSearchResults();
+    document.querySelector('[data-action="sort-document-number"]')?.focus();
+  }
   else if (action === "sort-purchase-date") {
     purchaseDateOrder = purchaseDateOrder === "ascending" ? "descending" : "ascending";
     renderSearchResults();
