@@ -469,12 +469,20 @@ function table(key, items, movementActions = key === "movements" && section() ==
     customers:["Nome","Indirizzo","Città","Telefono","Contabile","Azioni"],
     suppliers:["Nome","Indirizzo","Città","Nazione","Telefono","Contabile","Azioni"],
     receipts:["Data","Cliente","Profumo","Importo","Note"],
-    documents:["NUM. DOC","Data acquisto","Fornitore"],
+    documents:["NUM. DOC","Data acquisto","Fornitore","Totale documento"],
     purchases:["Data","NUM. DOC","Fornitore","Articolo di base","Costo unitario","Unità di misura","Quantità","Totale","Note","Azioni"],
     units:["Unità di misura"],
     equivalents:["Codice","Equivalenza","Profumo Scentora"],
     users:["Utente","Ruolo","Stato","Azioni"],
   }[key];
+  const documentTotals = new Map();
+  if (key === "documents") {
+    for (const item of state.accounting) {
+      if (item.kind === "supplier" && item.document_id != null) {
+        documentTotals.set(item.document_id,(documentTotals.get(item.document_id) ?? 0n) + BigInt(item.amount));
+      }
+    }
+  }
   const body = items.map(item => {
     const name = escape(item.name);
     switch (key) {
@@ -515,7 +523,8 @@ function table(key, items, movementActions = key === "movements" && section() ==
           + cell("Contabile",button("Contabile",`ledger:${item.id}`,"inline"))
           + cell("Azioni",button("Modifica",`${item.kind}:${item.id}`,"inline"),"row-actions");
       case "documents":
-        return cell("NUM. DOC",button(escape(item.document_number),`purchase-document:${item.id}`,"inline text-link")) + cell("Data acquisto",shortDate(item.occurred_on)) + cell("Fornitore",escape(item.contact));
+        return cell("NUM. DOC",button(escape(item.document_number),`purchase-document:${item.id}`,"inline text-link")) + cell("Data acquisto",shortDate(item.occurred_on)) + cell("Fornitore",escape(item.contact))
+          + cell("Totale documento",stockMoney((documentTotals.get(item.id) ?? 0n) * BigInt(scale)),"numeric");
       case "receipts":
       case "purchases":
         return cell("Data",shortDate(item.occurred_on))
