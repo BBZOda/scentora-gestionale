@@ -210,6 +210,7 @@ function analysisPage() {
     <section class="panel cost-analysis">
       <div class="analysis-toolbar">
         ${select("Profumo","analysis-perfume",options(state.perfumes),false)}
+        <div id="analysis-identity" class="analysis-identity" hidden></div>
         <button class="button recipe-button" type="button" data-action="print-page" disabled>STAMPA</button>
       </div>
       <div id="analysis-detail"></div>
@@ -239,6 +240,9 @@ function showAnalysis(selectField) {
   const detail = document.querySelector("#analysis-detail");
   const perfume = state.perfumes.find(item => item.id === Number(selectField.value));
   const printButton = selectField.closest(".analysis-toolbar").querySelector("button");
+  const identity = document.querySelector("#analysis-identity");
+  identity.hidden = !perfume;
+  identity.innerHTML = "";
   printButton.disabled = !perfume;
   if (!perfume) {
     detail.innerHTML = "";
@@ -246,8 +250,12 @@ function showAnalysis(selectField) {
   }
   const net = Math.round(perfume.price / scale * 100 / (1 + saleVatRate)) / 100;
   const base = cost(perfume.id);
-  detail.innerHTML = `${perfume.has_photo ? `<div class="analysis-photo">${perfumePhoto(perfume)}</div>` : ""}
-    ${analysisMetrics(perfume,net,base,true)}
+  const equivalents = [...new Set((state.equivalents ?? [])
+    .filter(entry => equivalenceKey(entry.name) === equivalenceKey(perfume.name))
+    .map(entry => entry.description).filter(Boolean))];
+  identity.innerHTML = `${perfume.has_photo ? `<div class="analysis-photo">${perfumePhoto(perfume)}</div>` : ""}
+    <div class="analysis-equivalence"><strong>Equivalenza</strong><span>${escape(equivalents.join(" · ") || "—")}</span></div>`;
+  detail.innerHTML = `${analysisMetrics(perfume,net,base,true)}
     <h2>Distinta Art.</h2>
     <div class="table-wrap" tabindex="0" role="region" aria-label="Distinta Art.">
     <table><thead><tr>${["Articolo","Quantità","Costo unitario","Costo totale"].map(label =>
