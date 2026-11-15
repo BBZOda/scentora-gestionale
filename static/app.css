@@ -416,3 +416,9 @@ th .button[data-action="supplier-totals"]:hover { background: #b5d2b8; }
 .panel:has(> #results table[aria-label="Profumi"]) { overflow: clip; }
 #results .table-wrap:has(> table[aria-label="Profumi"]) { overflow: visible; }
 #results table[aria-label="Profumi"] thead th { position: sticky; top: 65px; z-index: 1; }
+
+table[aria-label="Clienti"] td[data-label="Contabile"] .button {
+  background: #d3e2ed;
+  color: var(--ink);
+}
+table[aria-label="Clienti"] td[data-label="Contabile"] .button:hover { background: #bfd5e5; }
