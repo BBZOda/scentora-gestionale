@@ -26,6 +26,7 @@ const paths = {
   list: '<path d="M9 6h12M9 12h12M9 18h12M3 6h2M3 12h2M3 18h2"/>',
   users: '<circle cx="9" cy="8" r="3"/><path d="M3 20v-2a6 6 0 0 1 12 0v2m1-15a3 3 0 0 1 0 6m2 3a5 5 0 0 1 3 5v1"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
+  minus: '<path d="M5 12h14"/>',
   arrow: '<path d="M4 12h15m-6-6 6 6-6 6"/>',
   search: '<circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4 4"/>',
   menu: '<path d="M4 6h16M4 12h16M4 18h16"/>',
@@ -361,12 +362,15 @@ function openStockValue() {
 function listing(key) {
   const [description,label,action,placeholder] = settings[key];
   const canCreate = key !== "equivalents" && (key !== "units" || state.user.role === "admin");
-  return `<div class="page-heading"><div><h1>${sections[key][0]}</h1><p>${description}</p></div>
+  return `<div class="page-heading${key === "movements" ? " production-heading" : ""}"><div><h1>${sections[key][0]}</h1><p>${description}</p></div>
+    ${key === "movements" ? `<div class="actions production-actions">
+      ${button("Carica Profumo","produce","perfume-load","plus")}
+      ${button("Scarica Profumo","unload","perfume-unload","minus")}</div>` : ""}
     <div class="actions">${key === "perfumes" ? button("Scarica profumo","unload","perfume-unload")
       + button("Carica profumo","produce","perfume-load") : ""}
     ${key === "articles" ? button("VALORE MAGAZZINO","stock-value","perfume-load") : ""}
     ${button("STAMPA","print-page","recipe-button")}
-    ${canCreate && key !== "users" ? button(label,action,"primary","plus") : ""}
+    ${canCreate && key !== "users" && key !== "movements" ? button(label,action,"primary","plus") : ""}
     ${key === "purchases" ? button("Acquisto a lista","purchase-list","recipe-button","plus") : ""}</div></div>
     ${key === "users" ? usersTabs(key) : ""}
     ${accountingSection(key) ? `<nav class="accounting-nav" aria-label="Gestione Contabilità">${["receipts","purchases"].map(tab =>
