@@ -434,3 +434,9 @@ table[aria-label="Fornitori"] td[data-label="Contabile"] .button:hover { backgro
 table[aria-label="Documenti acquisto"] :is(th,td):first-child { width: 14%; }
 table[aria-label="Documenti acquisto"] :is(th,td):nth-child(2) { width: 23%; }
 table[aria-label="Documenti acquisto"] :is(th,td):last-child { width: 21%; font-weight: 700; }
+
+dialog:has(form[data-form="equipment-list"]) { width: min(950px, calc(100% - 24px)); }
+form[data-form="equipment-list"] .dialog-content { display: grid; gap: 16px; }
+form[data-form="equipment-list"] [data-action="add-equipment-line"] { justify-self: start; }
+.equipment-lines { min-width: 550px; }
+.equipment-lines td:nth-child(2) { width: 120px; }
