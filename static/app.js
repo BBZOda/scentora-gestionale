@@ -56,6 +56,7 @@ const accountingSection = key => key === "receipts" || key === "purchases";
 let state;
 let query = "";
 let purchaseDate = "";
+let purchaseDateOrder = "descending";
 let navOpen = false;
 let notificationTimer;
 
@@ -292,7 +293,7 @@ function printableCopy(source) {
     }
   });
   copy.querySelectorAll("td,th").forEach(cell => {
-    const link = cell.querySelector('button[data-action^="ledger:"],button[data-action^="supplier-totals"]');
+    const link = cell.querySelector('button[data-action^="ledger:"],button[data-action^="supplier-totals"],button[data-action="sort-purchase-date"]');
     if (link) link.replaceWith(document.createTextNode(link.textContent));
   });
   copy.querySelectorAll("button,[hidden],.form-error").forEach(node => node.remove());
@@ -402,7 +403,8 @@ function listing(key) {
       <a href="#equivalents" ${key === "equivalents" ? 'aria-current="page"' : ""}>Tabella Equivalenze</a>
       <a href="#documents" ${key === "documents" ? 'aria-current="page"' : ""}>Documenti acquisto</a>
     </nav>` : ""}
-    <section class="panel"><div class="panel-heading">${key === "users" ? '<div class="users-toolbar">' : ""}<label class="search">${icon("search")}<input type="search" id="search" aria-label="${placeholder}" placeholder="${placeholder}" value="${escape(query)}"></label>${key === "users" ? button(label,action,"primary","plus") + "</div>" : ""}${["purchases","documents"].includes(key) ? `<label>Data acquisto<input id="purchase-date" type="date" value="${escape(purchaseDate)}"></label>` : ""}<span class="count" id="count" aria-live="polite"></span></div>
+    <section class="panel"><div class="panel-heading">${key === "users" ? '<div class="users-toolbar">' : ""}<label class="search">${icon("search")}<input type="search" id="search" aria-label="${placeholder}" placeholder="${placeholder}" value="${escape(query)}"></label>${key === "users" ? button(label,action,"primary","plus") + "</div>" : ""}${["purchases","documents"].includes(key) ? `<div class="actions"><label>Data acquisto<input id="purchase-date" type="date" value="${escape(purchaseDate)}"></label>
+      <button type="button" class="button recipe-button" data-action="clear-purchase-date">Azzera data</button></div>` : ""}<span class="count" id="count" aria-live="polite"></span></div>
     <div id="results">${table(key,filtered(key))}</div></section>
     ${key === "purchases" ? '<div class="purchase-search-total" id="purchase-search-total" role="status" hidden></div>' : ""}`;
 }
@@ -412,10 +414,12 @@ function filtered(key) {
     item.kind === (key === "receipts" ? "customer" : "supplier")) : state[key];
   const filterDate = ["purchases","documents"].includes(key) ? purchaseDate : "";
   const term = query.trim().toLocaleLowerCase("it");
-  return entries.filter(item => (!filterDate || item.occurred_on === filterDate) && [item.document_number,item.name,item.code,item.actor,item.city,item.country,item.phone,
+  const matches = entries.filter(item => (!filterDate || item.occurred_on === filterDate) && [item.document_number,item.name,item.code,item.actor,item.city,item.country,item.phone,
     item.contact,item.description,item.notes,
     key === "articles" ? state.suppliers.find(supplier => supplier.id === item.supplier_id)?.name : undefined].some(value =>
     String(value ?? "").toLocaleLowerCase("it").includes(term)));
+  return key === "purchases" ? matches.sort((a,b) =>
+    (purchaseDateOrder === "ascending" ? 1 : -1) * a.occurred_on.localeCompare(b.occurred_on)) : matches;
 }
 
 const cell = (label,value,style = "") => `<td data-label="${label}" class="${style}">${value}</td>`;
@@ -503,7 +507,9 @@ function table(key, items, movementActions = key === "movements" && section() ==
           + cell("Azioni",button("Modifica",`user:${item.id}`,"inline"),"row-actions");
     }
   }).map(row => `<tr>${row}</tr>`).join("");
-  return `<div class="table-wrap" tabindex="0" role="region" aria-label="Tabella ${sections[key][0]}"><table aria-label="${sections[key][0]}"><thead><tr>${headings.map(label => `<th scope="col">${key === "articles" && label === "Fornitore"
+  return `<div class="table-wrap" tabindex="0" role="region" aria-label="Tabella ${sections[key][0]}"><table aria-label="${sections[key][0]}"><thead><tr>${headings.map(label => `<th scope="col"${key === "purchases" && label === "Data" ? ` aria-sort="${purchaseDateOrder}"` : ""}>${key === "purchases" && label === "Data"
+    ? button(purchaseDateOrder === "ascending" ? "Data ↑" : "Data ↓","sort-purchase-date","recipe-button")
+    : key === "articles" && label === "Fornitore"
     ? '<button type="button" class="button inline text-link" data-action="supplier-totals" title="Totali acquisti per fornitore">Fornitore</button>'
     : label}</th>`).join("")}</tr></thead><tbody>${body}</tbody></table></div>`;
 }
@@ -1077,6 +1083,15 @@ document.addEventListener("click", async event => {
   const [action,id] = control.dataset.action.split(":");
   if (action === "print-page" || action === "print-dialog") printReport(action === "print-dialog");
   else if (action === "supplier-totals") openSupplierTotals(Number(id));
+  else if (action === "sort-purchase-date") {
+    purchaseDateOrder = purchaseDateOrder === "ascending" ? "descending" : "ascending";
+    renderSearchResults();
+    document.querySelector('[data-action="sort-purchase-date"]')?.focus();
+  } else if (action === "clear-purchase-date") {
+    purchaseDate = "";
+    document.querySelector("#purchase-date").value = "";
+    renderSearchResults();
+  }
   else if (action === "stock-value") openStockValue();
   else if (action === "menu") {
     navOpen = !navOpen;
@@ -1143,6 +1158,12 @@ document.addEventListener("click", async event => {
   else modal(action,Number(id));
 });
 
+function renderSearchResults() {
+  const key = section();
+  document.querySelector("#results").innerHTML = table(key,filtered(key));
+  updateCount();
+}
+
 function updateCount() {
   const count = document.querySelector("#count");
   if (count) {
@@ -1188,8 +1209,7 @@ document.addEventListener("input", event => {
   if (event.target.id === "search" || event.target.id === "purchase-date") {
     if (event.target.id === "search") query = event.target.value;
     else purchaseDate = event.target.value;
-    document.querySelector("#results").innerHTML = table(section(),filtered(section()));
-    updateCount();
+    renderSearchResults();
   }
   if (dialog.contains(event.target)) updatePreview();
 });
