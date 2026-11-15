@@ -347,3 +347,36 @@ form[data-form="purchase-list"] [data-action="add-purchase-line"] { justify-self
 .analysis-extra td { padding-block: 6px; }
 .analysis-extra [data-extra-cost] { min-width: 110px; }
 .analysis-extra input[aria-invalid="true"] { border-color: var(--error); }
+
+.analysis-toolbar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: end; gap: 12px; }
+.analysis-toolbar label { flex: 1 1 250px; max-width: 420px; }
+.analysis-toolbar select { font-size: 17px; }
+.print-report { display: none; }
+
+@page { size: A4 portrait; margin: 13mm; }
+@page scentora-wide { size: A4 landscape; margin: 13mm; }
+
+@media print {
+  body:has(> .print-report) > :not(.print-report) { display: none !important; }
+  body:has(> .print-report) { background: #fff; color: #231a16; min-height: 0; }
+  .print-report { display: block; font-size: 10pt; }
+  .print-wide { page: scentora-wide; }
+  .print-report h1 { font-size: 23pt; margin: 0 0 12pt; }
+  .print-report h2 { font-size: 15pt; margin: 12pt 0 6pt; break-after: avoid; }
+  .print-brand { letter-spacing: .16em; font-weight: 700; margin: 0 0 5pt; }
+  .print-report :is(.panel,.dialog-content,.work,.table-wrap,.purchase-search-total) {
+    display: block; overflow: visible; padding: 0; margin: 0; border: 0; box-shadow: none; background: transparent;
+  }
+  .print-report table { min-width: 0; font-size: 9pt; }
+  .print-report :is(tr,.analysis-metrics,.recipe-line,.metrics) { break-inside: avoid; }
+  .print-report :is(th,td) { padding: 5pt; border-bottom: 1px solid #ddd; }
+  .print-report th { font-size: 9pt; white-space: normal; }
+  .print-report .analysis-metrics { grid-template-columns: repeat(5,minmax(0,1fr)); }
+  .print-report .analysis-metrics dd { font-size: 13pt; }
+  .print-report .analysis-metrics dt { font-size: 9pt; }
+  .print-report .print-value { display: block; font-weight: 400; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .print-report .metrics { margin-bottom: 12pt; }
+  .print-report .metric { color: inherit; background: none; border: 1px solid #ddd; }
+  .print-report .metric svg { display: none; }
+  .print-report .purchase-search-total { margin-top: 10pt; }
+}
