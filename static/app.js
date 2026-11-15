@@ -9,7 +9,7 @@ const sections = {
   articles: ["Articoli di base", "box"],
   perfumes: ["Profumi", "bottle"],
   movements: ["Produzione", "clock"],
-  customers: ["Clienti", "users"],
+  customers: ["Apporto Soci", "users"],
   suppliers: ["Fornitori", "box"],
   receipts: ["Incassi", "wallet"],
   "ecommerce-sales": ["Vendite E-commerce", "wallet"],
