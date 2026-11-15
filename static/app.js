@@ -330,12 +330,30 @@ function printReport(fromDialog) {
   window.print();
 }
 
+const stockValue = item => BigInt(item.cost) * BigInt(item.stock);
+
+function stockMoney(value) {
+  const cents = (value + purchaseDivisor / 2n) / purchaseDivisor;
+  return saleMoney.formatToParts(cents / 100n).map(part =>
+    part.type === "fraction" ? String(cents % 100n).padStart(2,"0") : part.value).join("");
+}
+
+function openStockValue() {
+  const total = state.articles.reduce((sum,item) => sum + stockValue(item),0n);
+  dialog.innerHTML = `<div class="dialog-heading"><h2 id="dialog-title">Valore magazzino</h2>
+    <button type="button" class="icon-button" data-action="close" aria-label="Chiudi">${icon("close")}</button></div>
+    <div class="dialog-content"><p>Valore totale degli articoli di base</p><strong class="stock-value-total">${stockMoney(total)}</strong></div>
+    <div class="dialog-actions">${button("Chiudi","close")}</div>`;
+  dialog.showModal();
+}
+
 function listing(key) {
   const [description,label,action,placeholder] = settings[key];
   const canCreate = key !== "equivalents" && (key !== "units" || state.user.role === "admin");
   return `<div class="page-heading"><div><h1>${sections[key][0]}</h1><p>${description}</p></div>
     <div class="actions">${key === "perfumes" ? button("Scarica profumo","unload","perfume-unload")
       + button("Carica profumo","produce","perfume-load") : ""}
+    ${key === "articles" ? button("VALORE MAGAZZINO","stock-value","perfume-load") : ""}
     ${button("STAMPA","print-page","recipe-button")}
     ${canCreate && key !== "users" ? button(label,action,"primary","plus") : ""}
     ${key === "purchases" ? button("Acquisto a lista","purchase-list","recipe-button","plus") : ""}</div></div>
@@ -370,7 +388,7 @@ function table(key, items, movementActions = key === "movements" && section() ==
       <span>${query ? "Prova un altro termine di ricerca." : messages[key]}</span></div>`;
   }
   const headings = {
-    articles:["Codice","Descrizione Articolo","Profumo Scentora","Unità","Costo unitario","Giacenza","Azioni","Fornitore"],
+    articles:["Codice","Descrizione Articolo","Profumo Scentora","Unità","Costo unitario","Giacenza","Valore","Azioni","Fornitore"],
     perfumes:["Profumo","Unità","Costo distinta","Prezzo vendita","Giacenza","Azioni"],
     movements:["Profumo","Data","Movimento","Operatore","Quantità","Note",...(movementActions ? ["Azioni"] : [])],
     customers:["Nome","Indirizzo","Città","Telefono","Contabile","Azioni"],
@@ -390,9 +408,10 @@ function table(key, items, movementActions = key === "movements" && section() ==
           + cell("Profumo Scentora",escape(state.perfumes.find(perfume => perfume.id === item.scentora_perfume_id)?.name))
           + cell("Unità",escape(unit(item.unit))) + cell("Costo unitario",euro(item.cost),"numeric")
           + cell("Giacenza",`<span class="stock ${item.stock ? "" : "zero"}">${format(item.stock)}</span>`,"numeric")
+          + cell("Valore",stockMoney(stockValue(item)),"numeric")
           + cell("Azioni",`<div class="article-actions">${button("Movimenta",`stock:${item.id}`,"inline")}
-            <div class="article-edit-actions">${button("Modifica",`article:${item.id}`,"inline")}
-              ${button("Elimina",`article:${item.id}`,"article-delete")}</div></div>`)
+            <div class="article-edit-actions"><button type="button" class="button inline" data-action="article:${item.id}" title="Modifica" aria-label="Modifica articolo">Mod.</button>
+              <button type="button" class="button article-delete" data-action="article:${item.id}" title="Elimina" aria-label="Elimina articolo">Elim.</button></div></div>`)
           + cell("Fornitore",escape(state.suppliers.find(supplier => supplier.id === item.supplier_id)?.name));
       case "perfumes":
         return cell("Profumo",`<strong>${name}</strong>`) + cell("Unità",escape(unit(item.unit)))
@@ -985,6 +1004,7 @@ document.addEventListener("click", async event => {
   if (!control) return;
   const [action,id] = control.dataset.action.split(":");
   if (action === "print-page" || action === "print-dialog") printReport(action === "print-dialog");
+  else if (action === "stock-value") openStockValue();
   else if (action === "menu") {
     navOpen = !navOpen;
     document.querySelector("#sidebar").classList.toggle("open", navOpen);
