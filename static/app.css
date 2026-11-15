@@ -430,3 +430,7 @@ table[aria-label="Fornitori"] td[data-label="Contabile"] .button:hover { backgro
   min-height: 44px;
   padding-inline: 12px;
 }
+
+table[aria-label="Documenti acquisto"] :is(th,td):first-child { width: 14%; }
+table[aria-label="Documenti acquisto"] :is(th,td):nth-child(2) { width: 23%; }
+table[aria-label="Documenti acquisto"] :is(th,td):last-child { width: 21%; }
