@@ -466,3 +466,9 @@ form[data-form="equipment-list"] [data-action="add-equipment-line"] { justify-se
 .photo-gallery .perfume-photo-editor { justify-content: center; }
 .photo-gallery .perfume-photo-preview { width: min(320px, 76vw); height: min(320px, 76vw); }
 .analysis-photo { margin-top: 12px; }
+
+.photo-zoom-trigger { border: 0; padding: 0; cursor: zoom-in; }
+.photo-viewer { width: max-content; max-width: calc(100vw - 24px); background: #21110c; overflow: hidden; }
+.photo-viewer img { display: block; width: auto; height: auto; max-width: min(900px,calc(100vw - 26px)); max-height: calc(100dvh - 26px); }
+.photo-viewer-close { position: absolute; top: 8px; right: 8px; z-index: 1; background: #f5eee7; color: var(--ink); }
+.photo-viewer-close:hover { background: #fff; }
