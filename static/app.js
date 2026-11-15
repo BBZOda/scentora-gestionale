@@ -155,8 +155,8 @@ function dashboard() {
       <div class="hero-art" aria-hidden="true"><i></i><i></i><i></i>${mark}</div>
       <div class="hero-content"><p class="eyebrow">SCENTORA / PRODUZIONE</p><h1>Panoramica</h1>
       <p>Giacenze, distinte base e carichi di produzione.</p>
-      ${button("Carica profumo", "produce", "primary", "plus")}
-      ${button("STAMPA","print-page","recipe-button")}</div>
+      </div>
+      <a class="button primary hero-site-link" href="https://www.scentora.it/" target="_blank" rel="noopener noreferrer">VAI AL SITO ${icon("arrow")}</a>
     </section>
     <section class="metrics" aria-label="Riepilogo">${counts.map(([label,value,link,symbol]) => `<a class="metric" href="#${link}">
       <span class="metric-icon">${icon(symbol)}</span><span class="metric-label">${label}</span><strong>${value}</strong><span class="metric-arrow">${icon("arrow")}</span>
