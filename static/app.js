@@ -12,6 +12,8 @@ const sections = {
   customers: ["Clienti", "users"],
   suppliers: ["Fornitori", "box"],
   receipts: ["Incassi", "wallet"],
+  "ecommerce-sales": ["Vendite E-commerce", "wallet"],
+  "ecommerce-customers": ["Clienti E-commerce", "users"],
   purchases: ["Acquisto Articoli", "wallet"],
   units: ["Elenchi", "list"],
   equivalents: ["Tabella Equivalenze", "list"],
@@ -181,6 +183,8 @@ const settings = {
   suppliers: ["Consulta le anagrafiche e i movimenti di spesa.", "Nuovo fornitore", "supplier", "Cerca per nome, città, nazione o telefono"],
   receipts: ["Registra gli incassi dei clienti.", "Nuovo incasso", "receipt", "Cerca per cliente, profumo o note"],
   purchases: ["Registra gli acquisti dai fornitori e aggiorna la giacenza degli articoli.", "Nuovo acquisto", "purchase", "Cerca per numero documento, fornitore, articolo o note"],
+  "ecommerce-sales": ["Consulta gli ordini e il dettaglio delle vendite Shopify.", "", "", "Cerca per numero ordine o cliente"],
+  "ecommerce-customers": ["Consulta i clienti Shopify e il loro storico acquisti.", "", "", "Cerca per nome, email o telefono"],
   equipment: ["Consulta gli attrezzi per la produzione.", "Nuovo attrezzo", "equipment", "Cerca per descrizione, fornitore o note"],
   documents: ["Documenti registrati negli acquisti, con data e fornitore.", "", "", "Cerca per numero documento o fornitore"],
   equivalents: ["Corrispondenze tra codici, equivalenze e profumi Scentora.", "", "", "Cerca per codice, equivalenza o profumo"],
@@ -367,7 +371,7 @@ function printableCopy(source) {
     }
   });
   copy.querySelectorAll("td,th").forEach(cell => {
-    const link = cell.querySelector('button[data-action^="ledger:"],button[data-action^="supplier-totals"],button[data-action="sort-purchase-date"],button[data-action="sort-document-number"],button[data-action^="purchase-document:"],button[data-action^="article-history:"]');
+    const link = cell.querySelector('button[data-action^="ledger:"],button[data-action^="supplier-totals"],button[data-action="sort-purchase-date"],button[data-action="sort-document-number"],button[data-action^="purchase-document:"],button[data-action^="article-history:"],button[data-action^="ecommerce-order:"],button[data-action^="ecommerce-customer:"]');
     if (link) link.replaceWith(document.createTextNode(link.textContent));
   });
   copy.querySelectorAll("button,[hidden],.form-error,.scenario-library,.photo-controls").forEach(node => node.remove());
@@ -599,6 +603,68 @@ async function openArticleHistory(id) {
   }
 }
 
+function ecommerceMoney(amount,currency) {
+  if (amount == null) return "—";
+  return new Intl.NumberFormat("it-IT",{style:"currency",currency}).format(amount / scale);
+}
+
+function ecommerceSpent(orders) {
+  const totals = new Map();
+  for (const order of orders) {
+    if (order.paid == null || order.refunded == null) continue;
+    totals.set(order.currency,(totals.get(order.currency) ?? 0) + order.paid - order.refunded);
+  }
+  return [...totals].map(([currency,amount]) => ecommerceMoney(amount,currency)).join(" · ") || "—";
+}
+
+function ecommerceOrderCells(item) {
+  return cell("Ordine",button(escape(item.number),`ecommerce-order:${item.id}`,"inline text-link"))
+    + cell("Data",shortDate(item.occurred_on))
+    + cell("Cliente",escape(item.customer_name || item.customer_email || "—"))
+    + cell("Pagamento",escape(item.payment_status))
+    + cell("Totale ordine",ecommerceMoney(item.total,item.currency),"numeric");
+}
+
+function ecommerceDialog(title,content,back = "") {
+  dialog.innerHTML = `<div class="dialog-heading"><h2 id="dialog-title">${escape(title)}</h2>
+    <button type="button" class="icon-button" data-action="close" aria-label="Chiudi">${icon("close")}</button></div>
+    <div class="dialog-content">${content}</div>
+    <div class="dialog-actions">${back}${button("STAMPA","print-dialog","recipe-button")}${button("Chiudi","close")}</div>`;
+  if (!dialog.open) dialog.showModal();
+}
+
+function openEcommerceOrder(id) {
+  const order = state["ecommerce-sales"].find(item => item.id === id);
+  if (!order) return;
+  const lines = state["ecommerce-lines"].filter(item => item.order_id === id);
+  const money = value => ecommerceMoney(value,order.currency);
+  const fromCustomer = dialog.open && dialog.querySelector("[data-ecommerce-customer]");
+  ecommerceDialog("Ordine " + order.number,`<p>${shortDate(order.occurred_on)} · ${escape(order.customer_name || order.customer_email || "Cliente non associato")} · ${escape(order.payment_status)}</p>
+    <div class="table-wrap" tabindex="0" role="region" aria-label="Prodotti dell’ordine">
+      <table><thead><tr><th scope="col">Profumo</th><th scope="col">SKU</th><th scope="col">Quantità</th><th scope="col">Prezzo unitario</th><th scope="col">Totale riga</th></tr></thead>
+      <tbody>${lines.map(item => `<tr>${cell("Profumo",escape(item.name))}${cell("SKU",escape(item.sku))}
+        ${cell("Quantità",number.format(item.quantity),"numeric")}${cell("Prezzo unitario",money(item.unit_price),"numeric")}
+        ${cell("Totale riga",money(item.total),"numeric")}</tr>`).join("")}</tbody></table>
+    </div>
+    <dl class="analysis-metrics">${[["Totale ordine",order.total],["Incassato",order.paid],["Rimborsato",order.refunded],
+      ["Sconti",order.discount],["Spedizione",order.shipping],["IVA",order.taxes]].map(([label,value]) =>
+      `<div><dt>${label}</dt><dd>${money(value)}</dd></div>`).join("")}</dl>`,
+    fromCustomer ? button("Torna al cliente",`ecommerce-customer:${fromCustomer.dataset.ecommerceCustomer}`) : "");
+}
+
+function openEcommerceCustomer(id) {
+  const customer = state["ecommerce-customers"].find(item => item.id === id);
+  if (!customer) return;
+  const orders = state["ecommerce-sales"].filter(order => order.customer_id === id);
+  ecommerceDialog("Cliente · " + (customer.name || customer.email || "Shopify"),`<div data-ecommerce-customer="${id}">
+    <p>${escape([customer.email,customer.phone].filter(Boolean).join(" · "))}</p>
+    <p><strong>Totale speso · ${escape(ecommerceSpent(orders))}</strong></p>
+    ${orders.length ? `<div class="table-wrap" tabindex="0" role="region" aria-label="Ordini del cliente">
+      <table><thead><tr><th scope="col">Ordine</th><th scope="col">Data</th><th scope="col">Cliente</th><th scope="col">Pagamento</th><th scope="col">Totale ordine</th></tr></thead>
+      <tbody>${orders.map(order => `<tr>${ecommerceOrderCells(order)}</tr>`).join("")}</tbody></table>
+    </div>` : "<p>Nessun ordine collegato.</p>"}</div>`);
+}
+
 function openPurchaseDocument(id) {
   const entry = state.documents.find(item => item.id === id);
   if (!entry) return;
@@ -665,7 +731,7 @@ function openStockValue() {
 
 function listing(key) {
   const [description,label,action,placeholder] = settings[key];
-  const canCreate = !["equivalents","documents"].includes(key) && (key !== "units" || state.user.role === "admin");
+  const canCreate = !["equivalents","documents","ecommerce-sales","ecommerce-customers"].includes(key) && (key !== "units" || state.user.role === "admin");
   return `<div class="page-heading${key === "movements" ? " production-heading" : ""}"><div><h1>${sections[key][0]}</h1><p>${description}</p></div>
     ${key === "movements" ? `<div class="actions production-actions">
       ${button("Carica Profumo","produce","perfume-load","plus")}
@@ -698,6 +764,7 @@ function filtered(key) {
   const filterDate = ["purchases","documents"].includes(key) ? purchaseDate : "";
   const term = query.trim().toLocaleLowerCase("it");
   const matches = entries.filter(item => (!filterDate || item.occurred_on === filterDate) && [item.document_number,item.name,item.code,item.actor,item.city,item.country,item.phone,
+    item.number,item.customer_name,item.customer_email,item.email,
     item.contact,item.description,item.notes,
     key === "articles" ? state.suppliers.find(supplier => supplier.id === item.supplier_id)?.name : undefined].some(value =>
     String(value ?? "").toLocaleLowerCase("it").includes(term)));
@@ -714,6 +781,8 @@ function table(key, items, movementActions = key === "movements" && section() ==
     const messages = {articles:"Aggiungi il primo articolo di base.", perfumes:"Crea un profumo con la sua distinta base.",
       movements:"I movimenti confermati compariranno qui.", units:"Aggiungi un’unità di misura.", users:"Crea il primo utente.",
       customers:"Aggiungi il primo cliente.", suppliers:"Aggiungi il primo fornitore.",
+      "ecommerce-sales":"Gli ordini compariranno qui dopo l’importazione da Shopify.",
+      "ecommerce-customers":"I clienti compariranno qui insieme agli ordini importati da Shopify.",
       equipment:"Aggiungi il primo attrezzo.", receipts:"Registra il primo incasso.", purchases:"Registra il primo acquisto."};
     return `<div class="empty"><span class="metric-icon">${icon(sections[key][1])}</span><strong>${query ? "Nessun risultato" : "Nessuna voce da mostrare"}</strong>
       <span>${query ? "Prova un altro termine di ricerca." : messages[key]}</span></div>`;
@@ -725,6 +794,8 @@ function table(key, items, movementActions = key === "movements" && section() ==
     customers:["Nome","Indirizzo","Città","Telefono","Contabile","Azioni"],
     suppliers:["Nome","Indirizzo","Città","Nazione","Telefono","Contabile","Azioni"],
     receipts:["Data","Cliente","Profumo","Importo","Note"],
+    "ecommerce-sales":["Ordine","Data","Cliente","Pagamento","Totale ordine"],
+    "ecommerce-customers":["Cliente","Email","Telefono","Ordini","Totale speso"],
     equipment:["Data","Descrizione","Importo","Fornitore","Note","Azioni"],
     documents:["NUM. DOC","Data acquisto","Fornitore","Totale documento"],
     purchases:["Data","NUM. DOC","Fornitore","Articolo di base","Costo unitario","Unità di misura","Quantità","Totale","Note","Azioni"],
@@ -781,6 +852,14 @@ function table(key, items, movementActions = key === "movements" && section() ==
           + cell("Telefono",escape(item.phone))
           + cell("Contabile",button("Contabile",`ledger:${item.id}`,"inline"))
           + cell("Azioni",button("Modifica",`${item.kind}:${item.id}`,"inline"),"row-actions");
+      case "ecommerce-sales":
+        return ecommerceOrderCells(item);
+      case "ecommerce-customers": {
+        const orders = state["ecommerce-sales"].filter(order => order.customer_id === item.id);
+        return cell("Cliente",button(escape(item.name || item.email || "Cliente Shopify"),`ecommerce-customer:${item.id}`,"inline text-link"))
+          + cell("Email",escape(item.email)) + cell("Telefono",escape(item.phone))
+          + cell("Ordini",number.format(orders.length),"numeric") + cell("Totale speso",escape(ecommerceSpent(orders)));
+      }
       case "equipment":
         return cell("Data",shortDate(item.occurred_on)) + cell("Descrizione",escape(item.description))
           + cell("Importo",saleMoney.format(item.amount / scale),"numeric") + cell("Fornitore",escape(item.contact))
@@ -1464,6 +1543,8 @@ document.addEventListener("click", async event => {
   }
   else if (action === "production-capacity") openProductionCapacity(Number(id));
   else if (action === "article-history") await openArticleHistory(Number(id));
+  else if (action === "ecommerce-order") openEcommerceOrder(Number(id));
+  else if (action === "ecommerce-customer") openEcommerceCustomer(Number(id));
   else if (action === "purchase-document") openPurchaseDocument(Number(id));
   else if (action === "sort-document-number") {
     sortDocumentsByNumber = true;
