@@ -22,7 +22,7 @@ DEMO = os.getenv("SCENTORA_DEMO") == "1"
 DB = os.getenv("SCENTORA_DB", str(ROOT / "scentora.sqlite"))
 SESSION_SECONDS = 12 * 3600
 PASSWORD_MIN = 5
-SCHEMA_VERSION = 15
+SCHEMA_VERSION = 16
 SCALE = 1_000_000
 CENT = SCALE // 100
 MAX_VALUE = 1_000_000_000 * SCALE
@@ -173,6 +173,11 @@ def migrate_schema(db):
                       WHERE d.article_id IS NOT NULL AND d.cancelled=0 AND lower(trim(d.notes))='n.1'
                         AND EXISTS (SELECT 1 FROM contact_movements m JOIN contacts c ON c.id=m.contact_id
                                     WHERE m.id=d.movement_id AND c.kind='supplier')""")
+    if version < 16:
+        db.execute("""CREATE TABLE equipment (
+            id INTEGER PRIMARY KEY, occurred_on TEXT NOT NULL, description TEXT NOT NULL,
+            amount INTEGER NOT NULL CHECK(amount >= 0),
+            supplier_id INTEGER NOT NULL REFERENCES contacts(id), notes TEXT NOT NULL)""")
     db.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
 
@@ -314,6 +319,9 @@ def state(db, user):
                                   JOIN contacts c ON c.id=m.contact_id
                                   LEFT JOIN purchase_documents pd ON pd.id=d.document_id
                                   WHERE d.cancelled=0 ORDER BY m.occurred_on DESC,m.id DESC"""),
+        "equipment": rows(db, """SELECT e.*,c.name AS contact FROM equipment e
+                                 JOIN contacts c ON c.id=e.supplier_id
+                                 ORDER BY e.occurred_on DESC,e.id DESC"""),
         "documents": rows(db, """SELECT pd.id,pd.number AS document_number,pd.occurred_on,c.name AS contact
                                  FROM purchase_documents pd JOIN contacts c ON c.id=pd.contact_id
                                  WHERE EXISTS (SELECT 1 FROM accounting_details
@@ -556,6 +564,25 @@ def save_contact(db, data):
     if kind == "customer":
         fields["country"] = ""
     replace_record(db, "contacts", contact_id, fields)
+
+
+def save_equipment(db, data):
+    record_id = data.get("id")
+    supplier_id = integer(data.get("supplier_id"))
+    previous = None if record_id is None else get_row(
+        db, "SELECT supplier_id FROM equipment WHERE id=?", (integer(record_id),))
+    if previous is None or previous["supplier_id"] != supplier_id:
+        get_row(db, "SELECT id FROM contacts WHERE id=? AND kind='supplier' AND archived=0", (supplier_id,))
+    price = amount(data.get("amount"))
+    if price % CENT:
+        raise Problem("Inserisci un importo con al massimo due decimali.")
+    notes = data.get("notes", "")
+    if not isinstance(notes, str) or len(notes) > 1000:
+        raise Problem("Le note possono contenere al massimo 1.000 caratteri.")
+    replace_record(db, "equipment", record_id, {
+        "occurred_on": movement_date(data.get("data")), "description": field(data, "description", 200),
+        "amount": price, "supplier_id": supplier_id, "notes": notes.strip(),
+    })
 
 
 def delete_contact(db, data):
@@ -906,6 +933,10 @@ def api(env, path, method):
             record_purchase_list(db, data)
         elif action in ("receipt", "purchase"):
             record_accounting(db, data, "customer" if action == "receipt" else "supplier")
+        elif action == "equipment":
+            save_equipment(db, data)
+        elif action == "delete-equipment":
+            db.execute("DELETE FROM equipment WHERE id=?", (integer(data.get("id")),))
         elif action == "unit":
             if user["role"] != "admin":
                 raise Problem("Operazione riservata agli amministratori.", "403 Forbidden")
