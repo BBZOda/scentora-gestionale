@@ -15,6 +15,7 @@ const sections = {
   purchases: ["Acquisto Articoli", "wallet"],
   units: ["Elenchi", "list"],
   equivalents: ["Tabella Equivalenze", "list"],
+  documents: ["Documenti acquisto", "list"],
   users: ["Utenti", "users"],
   archives: ["Gestione Archivi", "box"],
 };
@@ -54,6 +55,7 @@ const usersSection = key => key === "users" || key === "archives";
 const accountingSection = key => key === "receipts" || key === "purchases";
 let state;
 let query = "";
+let purchaseDate = "";
 let navOpen = false;
 let notificationTimer;
 
@@ -121,10 +123,10 @@ function renderLogin() {
 
 function render() {
   const current = section();
-  const links = Object.entries(sections).filter(([key]) => key !== "purchases" && key !== "equivalents" && key !== "archives" && (!usersSection(key) || state.user.role === "admin"))
+  const links = Object.entries(sections).filter(([key]) => key !== "purchases" && key !== "equivalents" && key !== "documents" && key !== "archives" && (!usersSection(key) || state.user.role === "admin"))
     .map(([key,[label,symbol]]) => {
       const accounting = key === "receipts";
-      const active = current === key || (accounting && accountingSection(current)) || (key === "units" && current === "equivalents") || (key === "users" && current === "archives");
+      const active = current === key || (accounting && accountingSection(current)) || (key === "units" && ["equivalents","documents"].includes(current)) || (key === "users" && current === "archives");
       return `<a href="#${accounting ? "accounting" : key}" ${active ? 'aria-current="page"' : ""}>${icon(symbol)}${accounting ? "Acquisti-Incassi" : key === "users" ? "Utenti e Archivi" : label}</a>`;
     }).join("");
   root.innerHTML = `<div class="shell">
@@ -172,7 +174,8 @@ const settings = {
   customers: ["Consulta le anagrafiche e i movimenti di incasso.", "Nuovo cliente", "customer", "Cerca per nome, città o telefono"],
   suppliers: ["Consulta le anagrafiche e i movimenti di spesa.", "Nuovo fornitore", "supplier", "Cerca per nome, città, nazione o telefono"],
   receipts: ["Registra gli incassi dei clienti.", "Nuovo incasso", "receipt", "Cerca per cliente, profumo o note"],
-  purchases: ["Registra gli acquisti dai fornitori e aggiorna la giacenza degli articoli.", "Nuovo acquisto", "purchase", "Cerca per fornitore, articolo o note"],
+  purchases: ["Registra gli acquisti dai fornitori e aggiorna la giacenza degli articoli.", "Nuovo acquisto", "purchase", "Cerca per numero documento, fornitore, articolo o note"],
+  documents: ["Documenti registrati negli acquisti, con data e fornitore.", "", "", "Cerca per numero documento o fornitore"],
   equivalents: ["Corrispondenze tra codici, equivalenze e profumi Scentora.", "", "", "Cerca per codice, equivalenza o profumo"],
   units: ["Unità di misura disponibili nelle schede.", "Nuova unità", "unit", "Cerca un’unità"],
   users: ["Gestisci gli account e i ruoli di accesso.", "Nuovo utente", "user", "Cerca un utente"],
@@ -380,7 +383,7 @@ function openStockValue() {
 
 function listing(key) {
   const [description,label,action,placeholder] = settings[key];
-  const canCreate = key !== "equivalents" && (key !== "units" || state.user.role === "admin");
+  const canCreate = !["equivalents","documents"].includes(key) && (key !== "units" || state.user.role === "admin");
   return `<div class="page-heading${key === "movements" ? " production-heading" : ""}"><div><h1>${sections[key][0]}</h1><p>${description}</p></div>
     ${key === "movements" ? `<div class="actions production-actions">
       ${button("Carica Profumo","produce","perfume-load","plus")}
@@ -394,11 +397,12 @@ function listing(key) {
     ${key === "users" ? usersTabs(key) : ""}
     ${accountingSection(key) ? `<nav class="accounting-nav" aria-label="Gestione Contabilità">${["receipts","purchases"].map(tab =>
       `<a href="#${tab}" ${tab === key ? 'aria-current="page"' : ""}>${tab === "receipts" ? "Incasso/Apporto Socio" : sections[tab][0]}</a>`).join("")}</nav>` : ""}
-    ${["units","equivalents"].includes(key) ? `<nav class="accounting-nav" aria-label="Elenchi">
+    ${["units","equivalents","documents"].includes(key) ? `<nav class="accounting-nav" aria-label="Elenchi">
       <a href="#units" ${key === "units" ? 'aria-current="page"' : ""}>Unità di misura</a>
       <a href="#equivalents" ${key === "equivalents" ? 'aria-current="page"' : ""}>Tabella Equivalenze</a>
+      <a href="#documents" ${key === "documents" ? 'aria-current="page"' : ""}>Documenti acquisto</a>
     </nav>` : ""}
-    <section class="panel"><div class="panel-heading">${key === "users" ? '<div class="users-toolbar">' : ""}<label class="search">${icon("search")}<input type="search" id="search" aria-label="${placeholder}" placeholder="${placeholder}" value="${escape(query)}"></label>${key === "users" ? button(label,action,"primary","plus") + "</div>" : ""}<span class="count" id="count" aria-live="polite"></span></div>
+    <section class="panel"><div class="panel-heading">${key === "users" ? '<div class="users-toolbar">' : ""}<label class="search">${icon("search")}<input type="search" id="search" aria-label="${placeholder}" placeholder="${placeholder}" value="${escape(query)}"></label>${key === "users" ? button(label,action,"primary","plus") + "</div>" : ""}${["purchases","documents"].includes(key) ? `<label>Data acquisto<input id="purchase-date" type="date" value="${escape(purchaseDate)}"></label>` : ""}<span class="count" id="count" aria-live="polite"></span></div>
     <div id="results">${table(key,filtered(key))}</div></section>
     ${key === "purchases" ? '<div class="purchase-search-total" id="purchase-search-total" role="status" hidden></div>' : ""}`;
 }
@@ -406,10 +410,12 @@ function listing(key) {
 function filtered(key) {
   const entries = accountingSection(key) ? state.accounting.filter(item =>
     item.kind === (key === "receipts" ? "customer" : "supplier")) : state[key];
-  return entries.filter(item => [item.name,item.code,item.actor,item.city,item.country,item.phone,
+  const filterDate = ["purchases","documents"].includes(key) ? purchaseDate : "";
+  const term = query.trim().toLocaleLowerCase("it");
+  return entries.filter(item => (!filterDate || item.occurred_on === filterDate) && [item.document_number,item.name,item.code,item.actor,item.city,item.country,item.phone,
     item.contact,item.description,item.notes,
     key === "articles" ? state.suppliers.find(supplier => supplier.id === item.supplier_id)?.name : undefined].some(value =>
-    String(value ?? "").toLocaleLowerCase("it").includes(query.trim().toLocaleLowerCase("it"))));
+    String(value ?? "").toLocaleLowerCase("it").includes(term)));
 }
 
 const cell = (label,value,style = "") => `<td data-label="${label}" class="${style}">${value}</td>`;
@@ -429,7 +435,8 @@ function table(key, items, movementActions = key === "movements" && section() ==
     customers:["Nome","Indirizzo","Città","Telefono","Contabile","Azioni"],
     suppliers:["Nome","Indirizzo","Città","Nazione","Telefono","Contabile","Azioni"],
     receipts:["Data","Cliente","Profumo","Importo","Note"],
-    purchases:["Data","Fornitore","Articolo di base","Costo unitario","Unità di misura","Quantità","Totale","Note","Azioni"],
+    documents:["NUM. DOC","Data acquisto","Fornitore"],
+    purchases:["Data","NUM. DOC","Fornitore","Articolo di base","Costo unitario","Unità di misura","Quantità","Totale","Note","Azioni"],
     units:["Unità di misura"],
     equivalents:["Codice","Equivalenza","Profumo Scentora"],
     users:["Utente","Ruolo","Stato","Azioni"],
@@ -473,9 +480,12 @@ function table(key, items, movementActions = key === "movements" && section() ==
           + cell("Telefono",escape(item.phone))
           + cell("Contabile",button("Contabile",`ledger:${item.id}`,"inline"))
           + cell("Azioni",button("Modifica",`${item.kind}:${item.id}`,"inline"),"row-actions");
+      case "documents":
+        return cell("NUM. DOC",escape(item.document_number)) + cell("Data acquisto",shortDate(item.occurred_on)) + cell("Fornitore",escape(item.contact));
       case "receipts":
       case "purchases":
         return cell("Data",shortDate(item.occurred_on))
+          + (key === "purchases" ? cell("NUM. DOC",escape(item.document_number)) : "")
           + cell(key === "receipts" ? "Cliente" : "Fornitore",item.contact_id ? button(escape(item.contact),`ledger:${item.contact_id}`,"inline text-link") : `<strong>${escape(item.contact)}</strong>`)
           + cell(key === "receipts" ? "Profumo" : "Articolo di base",
             key === "receipts" && item.perfume_id === null ? "—" : escape(item.description))
@@ -618,7 +628,8 @@ function modal(action,id,keepEquivalences = false) {
       title = "Acquisto a lista";
       label = "Salva";
       fields = `<div class="form-grid">${input("Data","data",today.format(new Date()),'type="date" required')}
-        ${select("Fornitore","contact",options(state.suppliers))}</div>
+        ${select("Fornitore","contact",options(state.suppliers))}
+        ${input("NUM. DOC","document_number","","maxlength=\"80\"")}</div>
         <div class="table-wrap" tabindex="0" role="region" aria-label="Righe di acquisto">
           <table class="purchase-lines"><thead><tr>
             ${["Codice","Descrizione Articolo","Profumo Scentora","Unità di misura","Costo unitario (€)","Quantità","Note","Azioni"].map(heading => `<th scope="col">${heading}</th>`).join("")}
@@ -656,6 +667,7 @@ function modal(action,id,keepEquivalences = false) {
       label = receipt ? "Registra" : original ? "Salva" : "Registra acquisto";
       fields = `<div class="form-grid">${input("Data","data",original?.occurred_on ?? today.format(new Date()),'type="date" required')}
         ${select(receipt ? "Cliente" : "Fornitore","contact",options(contacts,original?.contact_id))}
+        ${receipt ? "" : input("NUM. DOC","document_number",original?.document_number,'maxlength="80"')}
         ${receipt ? select("Profumo","perfume",options(products),false) + numericInput("Importo (€)","amount")
           : select("Articolo di base","article",options(products,original?.article_id,articleLabel))
             + (original ? input("Costo unitario (€)","purchase_cost",String(original.unit_cost / scale).replace(".",","),'inputmode="decimal" maxlength="22" required')
@@ -933,6 +945,7 @@ function formData(form) {
   if (action === "purchase-list") {
     return {
       data: data.data, contact: Number(data.contact), request_key: form.dataset.requestKey,
+      document_number: data.document_number,
       lines: [...form.querySelectorAll(".purchase-lines tbody tr")].map(row => {
         const id = Number(row.querySelector('[name="article"]').value);
         const item = article(id);
@@ -1138,7 +1151,7 @@ function updateCount() {
     count.textContent = total === 1 ? "1 voce" : number.format(total) + " voci";
     const summary = document.querySelector("#purchase-search-total");
     if (summary) {
-      summary.hidden = !query.trim();
+      summary.hidden = !query.trim() && !purchaseDate;
       if (!summary.hidden) {
         const amount = matches.reduce((sum,item) => sum + item.amount,0);
         summary.textContent = "Totale ricerca · " + saleMoney.format(amount / scale);
@@ -1172,8 +1185,9 @@ document.addEventListener("change", event => {
 });
 
 document.addEventListener("input", event => {
-  if (event.target.id === "search") {
-    query = event.target.value;
+  if (event.target.id === "search" || event.target.id === "purchase-date") {
+    if (event.target.id === "search") query = event.target.value;
+    else purchaseDate = event.target.value;
     document.querySelector("#results").innerHTML = table(section(),filtered(section()));
     updateCount();
   }
@@ -1182,6 +1196,7 @@ document.addEventListener("input", event => {
 window.addEventListener("hashchange", () => {
   if (!state) return;
   query = "";
+  purchaseDate = "";
   navOpen = false;
   render();
   document.querySelector("#main").focus();
