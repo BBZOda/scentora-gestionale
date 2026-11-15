@@ -380,3 +380,6 @@ form[data-form="purchase-list"] [data-action="add-purchase-line"] { justify-self
   .print-report .metric svg { display: none; }
   .print-report .purchase-search-total { margin-top: 10pt; }
 }
+
+.article-edit-actions .button { min-width: 48px; }
+.stock-value-total { font-size: 32px; font-variant-numeric: tabular-nums; }
