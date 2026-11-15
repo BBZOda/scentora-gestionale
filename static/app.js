@@ -288,8 +288,8 @@ function printableCopy(source) {
       if (cost.textContent.trim()) cost.textContent = euro(Number(cost.textContent.replace(",",".")) * scale);
     }
   });
-  copy.querySelectorAll('td').forEach(cell => {
-    const link = cell.querySelector('button[data-action^="ledger:"]');
+  copy.querySelectorAll("td,th").forEach(cell => {
+    const link = cell.querySelector('button[data-action^="ledger:"],button[data-action^="supplier-totals"]');
     if (link) link.replaceWith(document.createTextNode(link.textContent));
   });
   copy.querySelectorAll("button,[hidden],.form-error").forEach(node => node.remove());
@@ -349,6 +349,24 @@ function stockMoney(value) {
 
 function totalStockMoney() {
   return stockMoney(state.articles.reduce((sum,item) => sum + stockValue(item),0n));
+}
+
+function openSupplierTotals(id) {
+  const suppliers = id ? state.suppliers.filter(supplier => supplier.id === id) : state.suppliers;
+  const totals = new Map();
+  for (const item of state.accounting) {
+    if (item.kind !== "supplier") continue;
+    totals.set(item.contact_id,(totals.get(item.contact_id) ?? 0n) + BigInt(item.amount));
+  }
+  dialog.innerHTML = `<div class="dialog-heading"><h2 id="dialog-title">Acquisti per fornitore</h2>
+    <button type="button" class="icon-button" data-action="close" aria-label="Chiudi">${icon("close")}</button></div>
+    <div class="dialog-content">${suppliers.length ? `<div class="table-wrap" tabindex="0" role="region" aria-label="Acquisti per fornitore">
+      <table><thead><tr><th scope="col">Fornitore</th><th scope="col">Valore acquistato</th></tr></thead>
+      <tbody>${suppliers.map(supplier => `<tr>${cell("Fornitore",escape(supplier.name))}
+        ${cell("Valore acquistato",stockMoney((totals.get(supplier.id) ?? 0n) * BigInt(scale)),"numeric")}</tr>`).join("")}
+      </tbody></table></div>` : "<p>Nessun fornitore presente.</p>"}</div>
+    <div class="dialog-actions">${button("STAMPA","print-dialog","recipe-button")}${button("Chiudi","close")}</div>`;
+  dialog.showModal();
 }
 
 function openStockValue() {
@@ -417,7 +435,8 @@ function table(key, items, movementActions = key === "movements" && section() ==
   const body = items.map(item => {
     const name = escape(item.name);
     switch (key) {
-      case "articles":
+      case "articles": {
+        const supplier = state.suppliers.find(entry => entry.id === item.supplier_id);
         return cell("Codice",`<span class="code">${escape(item.code)}</span>`)
           + cell("Descrizione Articolo",`<strong>${name}</strong>`)
           + cell("Profumo Scentora",escape(state.perfumes.find(perfume => perfume.id === item.scentora_perfume_id)?.name))
@@ -427,7 +446,8 @@ function table(key, items, movementActions = key === "movements" && section() ==
           + cell("Azioni",`<div class="article-actions">${button("Movimenta",`stock:${item.id}`,"inline")}
             <div class="article-edit-actions"><button type="button" class="button inline" data-action="article:${item.id}" title="Modifica" aria-label="Modifica articolo">Mod.</button>
               <button type="button" class="button article-delete" data-action="article:${item.id}" title="Elimina" aria-label="Elimina articolo">Elim.</button></div></div>`)
-          + cell("Fornitore",`<strong>${escape(state.suppliers.find(supplier => supplier.id === item.supplier_id)?.name)}</strong>`);
+          + cell("Fornitore",supplier ? button(escape(supplier.name),`supplier-totals:${supplier.id}`,"inline text-link") : "");
+      }
       case "perfumes":
         return cell("Profumo",`<strong>${name}</strong>`) + cell("Unità",escape(unit(item.unit)))
           + cell("Costo distinta",euro(cost(item.id)),"numeric") + cell("Prezzo vendita",saleMoney.format(item.price / scale),"numeric")
@@ -471,7 +491,9 @@ function table(key, items, movementActions = key === "movements" && section() ==
           + cell("Azioni",button("Modifica",`user:${item.id}`,"inline"),"row-actions");
     }
   }).map(row => `<tr>${row}</tr>`).join("");
-  return `<div class="table-wrap" tabindex="0" role="region" aria-label="Tabella ${sections[key][0]}"><table aria-label="${sections[key][0]}"><thead><tr>${headings.map(label => `<th scope="col">${label}</th>`).join("")}</tr></thead><tbody>${body}</tbody></table></div>`;
+  return `<div class="table-wrap" tabindex="0" role="region" aria-label="Tabella ${sections[key][0]}"><table aria-label="${sections[key][0]}"><thead><tr>${headings.map(label => `<th scope="col">${key === "articles" && label === "Fornitore"
+    ? '<button type="button" class="button inline text-link" data-action="supplier-totals" title="Totali acquisti per fornitore">Fornitore</button>'
+    : label}</th>`).join("")}</tr></thead><tbody>${body}</tbody></table></div>`;
 }
 
 const options = (items,id,label = item => item.name) => '<option value="">Seleziona…</option>' +
@@ -1039,6 +1061,7 @@ document.addEventListener("click", async event => {
   if (!control) return;
   const [action,id] = control.dataset.action.split(":");
   if (action === "print-page" || action === "print-dialog") printReport(action === "print-dialog");
+  else if (action === "supplier-totals") openSupplierTotals(Number(id));
   else if (action === "stock-value") openStockValue();
   else if (action === "menu") {
     navOpen = !navOpen;
