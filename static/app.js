@@ -439,7 +439,7 @@ function table(key, items, movementActions = key === "movements" && section() ==
           + cell("Movimento",item.kind === "unload" ? "Scarico" : "Carico")
           + cell("Operatore",escape(item.actor)) + cell("Quantità",format(item.amount),"numeric")
           + cell("Note",escape(item.notes),"notes-cell")
-          + (movementActions ? cell("Azioni",button("Elimina",`confirm-movement:${item.id}`,"article-delete"),"row-actions") : "");
+          + (movementActions ? cell("Azioni",`<div class="purchase-actions">${button("Modifica",`edit-movement:${item.id}`,"recipe-button")}${button("Elimina",`confirm-movement:${item.id}`,"article-delete")}</div>`,"row-actions") : "");
       case "equivalents":
         return cell("Codice",escape(item.code)) + cell("Equivalenza",escape(item.description)) + cell("Profumo Scentora",name);
       case "units":
@@ -736,6 +736,25 @@ function confirmContactDelete(kind,id) {
   dialog.querySelector(`[data-action="${kind}:${id}"]`).focus();
 }
 
+function editMovement(id) {
+  const item = state.movements.find(movement => movement.id === id);
+  if (!item) return;
+  const day = item.occurred_on ?? today.format(new Date(item.created.replace(" ","T") + "Z"));
+  dialog.innerHTML = `<div class="dialog-heading"><h2 id="dialog-title">Modifica ${item.kind === "unload" ? "scarico" : "carico"}</h2>
+    <button type="button" class="icon-button" data-action="close" aria-label="Chiudi">${icon("close")}</button></div>
+    <form data-form="edit-movement" data-id="${id}">
+      <div class="dialog-content">
+        <div class="form-grid">${input("Data","data",day,'type="date" required')}
+          ${input("Profumo","display_perfume",item.name,"readonly")}
+          ${numericInput("Quantità","amount",item.amount)}</div>
+        <label class="notes-field">Note<textarea name="note" rows="3" maxlength="1000">${escape(item.notes)}</textarea></label>
+        <p class="form-error" role="alert" hidden></p>
+      </div>
+      <div class="dialog-actions">${button("Annulla","close")}<button class="button primary" type="submit">Salva</button></div>
+    </form>`;
+  dialog.showModal();
+}
+
 function confirmMovement(id) {
   const item = state.movements.find(movement => movement.id === id);
   if (!item) return;
@@ -996,6 +1015,7 @@ document.addEventListener("submit", async event => {
       "purchase-list": "Acquisti registrati e giacenze aggiornate.",
       "delete-article": "Articolo eliminato.",
       "delete-contact": "Scheda eliminata.",
+      "edit-movement": "Movimento modificato e giacenze aggiornate.",
       "cancel-movement": "Movimento eliminato e giacenze aggiornate.",
     };
     if (action !== "login") notify(messages[action] || "Modifiche salvate.");
@@ -1080,6 +1100,7 @@ document.addEventListener("click", async event => {
   else if (action === "confirm-article-delete") confirmArticleDelete(Number(id));
   else if (action === "confirm-customer-delete") confirmContactDelete("customer",Number(id));
   else if (action === "confirm-supplier-delete") confirmContactDelete("supplier",Number(id));
+  else if (action === "edit-movement") editMovement(Number(id));
   else if (action === "confirm-movement") confirmMovement(Number(id));
   else modal(action,Number(id));
 });
