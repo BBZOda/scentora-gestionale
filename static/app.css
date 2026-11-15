@@ -433,4 +433,4 @@ table[aria-label="Fornitori"] td[data-label="Contabile"] .button:hover { backgro
 
 table[aria-label="Documenti acquisto"] :is(th,td):first-child { width: 14%; }
 table[aria-label="Documenti acquisto"] :is(th,td):nth-child(2) { width: 23%; }
-table[aria-label="Documenti acquisto"] :is(th,td):last-child { width: 21%; }
+table[aria-label="Documenti acquisto"] :is(th,td):last-child { width: 21%; font-weight: 700; }
