@@ -22,7 +22,7 @@ DEMO = os.getenv("SCENTORA_DEMO") == "1"
 DB = os.getenv("SCENTORA_DB", str(ROOT / "scentora.sqlite"))
 SESSION_SECONDS = 12 * 3600
 PASSWORD_MIN = 5
-SCHEMA_VERSION = 17
+SCHEMA_VERSION = 18
 SCALE = 1_000_000
 CENT = SCALE // 100
 MAX_VALUE = 1_000_000_000 * SCALE
@@ -180,6 +180,40 @@ def migrate_schema(db):
             supplier_id INTEGER NOT NULL REFERENCES contacts(id), notes TEXT NOT NULL)""")
     if version < 17:
         db.execute("CREATE TABLE equipment_batches (request_key TEXT PRIMARY KEY, fingerprint TEXT NOT NULL)")
+    if version < 18:
+        db.execute("""CREATE TABLE cost_scenarios (
+            id INTEGER PRIMARY KEY, perfume_id INTEGER NOT NULL REFERENCES perfumes(id),
+            name TEXT NOT NULL, name_key TEXT NOT NULL, price INTEGER NOT NULL, extras TEXT NOT NULL,
+            UNIQUE(perfume_id,name_key))""")
+        db.execute("""CREATE TABLE article_history (
+            id INTEGER PRIMARY KEY, article_id INTEGER NOT NULL REFERENCES articles(id),
+            day TEXT NOT NULL, action TEXT NOT NULL DEFAULT 'Aggiornamento giacenza', delta INTEGER,
+            balance INTEGER, document TEXT)""")
+        db.execute("CREATE INDEX article_history_lookup ON article_history(article_id,id)")
+        db.execute("""INSERT INTO article_history(article_id,day,action,delta,document)
+                      SELECT d.article_id,m.occurred_on,'Acquisto storico',d.quantity,p.number
+                      FROM accounting_details d JOIN contact_movements m ON m.id=d.movement_id
+                      LEFT JOIN purchase_documents p ON p.id=d.document_id
+                      WHERE d.article_id IS NOT NULL AND d.stock_applied=1 AND d.cancelled=0""")
+        db.execute("""INSERT INTO article_history(article_id,day,action,delta)
+                      SELECT json_extract(line.value,'$.id'),COALESCE(m.occurred_on,date(m.created)),
+                             'Produzione storica',-json_extract(line.value,'$.required')
+                      FROM movements m JOIN json_each(m.recipe) line
+                      JOIN articles a ON a.id=json_extract(line.value,'$.id')
+                      WHERE m.kind='load' AND m.cancelled=0
+                        AND json_extract(line.value,'$.required') IS NOT NULL""")
+        db.execute("""INSERT INTO article_history(article_id,day,action,balance)
+                      SELECT id,date('now'),'Giacenza all’attivazione dello storico',stock FROM articles""")
+        db.execute("""CREATE TRIGGER article_history_update AFTER UPDATE OF stock ON articles
+                      WHEN NEW.stock != OLD.stock BEGIN
+                        INSERT INTO article_history(article_id,day,delta,balance)
+                        VALUES(NEW.id,date('now'),NEW.stock-OLD.stock,NEW.stock);
+                      END""")
+        db.execute("""CREATE TRIGGER article_history_insert AFTER INSERT ON articles
+                      WHEN NEW.stock != 0 BEGIN
+                        INSERT INTO article_history(article_id,day,action,delta,balance)
+                        VALUES(NEW.id,date('now'),'Giacenza iniziale',NEW.stock,NEW.stock);
+                      END""")
     db.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
 
@@ -321,6 +355,7 @@ def state(db, user):
                                   JOIN contacts c ON c.id=m.contact_id
                                   LEFT JOIN purchase_documents pd ON pd.id=d.document_id
                                   WHERE d.cancelled=0 ORDER BY m.occurred_on DESC,m.id DESC"""),
+        "scenarios": rows(db, "SELECT id,perfume_id,name,price,extras FROM cost_scenarios ORDER BY name_key"),
         "equipment": rows(db, """SELECT e.*,c.name AS contact FROM equipment e
                                  JOIN contacts c ON c.id=e.supplier_id
                                  ORDER BY e.occurred_on DESC,e.id DESC"""),
@@ -867,6 +902,40 @@ def archive_backup(db):
     return archive.getvalue()
 
 
+def save_cost_scenario(db, data):
+    perfume = integer(data.get("perfume"))
+    get_row(db, "SELECT id FROM perfumes WHERE id=?", (perfume,))
+    name = field(data, "name", 80)
+    price = amount(data.get("price"))
+    if price % CENT:
+        raise Problem("Inserisci un prezzo con al massimo due decimali.")
+    extras = data.get("extras")
+    if not isinstance(extras, list) or len(extras) != 3:
+        raise Problem("La simulazione richiede tre righe di costo.")
+    clean = []
+    for row in extras:
+        if not isinstance(row, dict):
+            raise Problem("Riga di costo non valida.")
+        label = row.get("label", "")
+        if not isinstance(label, str) or len(label) > 120:
+            raise Problem("Descrizione del costo troppo lunga.")
+        clean.append({"label": label.strip(), "cost": amount(row["cost"]) if row.get("cost") else None})
+    encoded = json.dumps(clean, ensure_ascii=False)
+    db.execute("""INSERT INTO cost_scenarios(perfume_id,name,name_key,price,extras)
+                  VALUES(?,?,?,?,?) ON CONFLICT(perfume_id,name_key) DO UPDATE SET
+                  name=excluded.name,price=excluded.price,extras=excluded.extras""",
+               (perfume,name,name.casefold(),price,encoded))
+    return rows(db, "SELECT id,perfume_id,name,price,extras FROM cost_scenarios ORDER BY name_key")
+
+
+STOCK_ACTIONS = {
+    "stock": "Movimentazione manuale", "produce": "Produzione",
+    "edit-movement": "Correzione produzione", "cancel-movement": "Storno produzione",
+    "purchase": "Acquisto", "purchase-list": "Acquisto a lista",
+    "edit-purchase": "Correzione acquisto", "delete-purchase": "Storno acquisto",
+}
+
+
 def api(env, path, method):
     cookies = SimpleCookie(env.get("HTTP_COOKIE", ""))
     session = cookies["scentora"].value if "scentora" in cookies else ""
@@ -928,9 +997,25 @@ def api(env, path, method):
                                    LEFT JOIN accounting_details d ON d.movement_id=m.id
                                    WHERE m.contact_id=? AND COALESCE(d.cancelled,0)=0 ORDER BY m.occurred_on DESC,m.id DESC""", (contact_id,))
             return {"movements": movements}, "200 OK", headers
+        history = re.fullmatch(r"/api/articles/([1-9][0-9]{0,15})/history", path)
+        if history and method == "GET":
+            return {"entries": rows(db, """SELECT day,action,delta,balance,document FROM article_history
+                WHERE article_id=? ORDER BY (balance IS NULL), CASE WHEN balance IS NULL THEN day END DESC,id DESC""",
+                (integer(int(history[1])),))}, "200 OK", headers
         if method != "POST":
             raise Problem("Pagina non trovata.", "404 Not Found")
         action = path.removeprefix("/api/")
+        if action == "cost-scenario":
+            return {"scenarios": save_cost_scenario(db, data)}, "200 OK", headers
+        stock_action = STOCK_ACTIONS.get(action)
+        if stock_action:
+            history_start = db.execute("SELECT COALESCE(MAX(id),0) FROM article_history").fetchone()[0]
+            document = data.get("document_number")
+            if action == "delete-purchase":
+                previous = db.execute("""SELECT p.number FROM accounting_details d
+                                         JOIN purchase_documents p ON p.id=d.document_id WHERE d.movement_id=?""",
+                                      (integer(data.get("id")),)).fetchone()
+                document = previous["number"] if previous else None
         if action == "logout":
             db.execute("DELETE FROM sessions WHERE token=?", (session,))
             headers.append(cookie("scentora", "", 0))
@@ -978,6 +1063,10 @@ def api(env, path, method):
             save_user(db, data, user)
         else:
             raise Problem("Pagina non trovata.", "404 Not Found")
+        if stock_action:
+            db.execute("""UPDATE article_history SET action=?,day=COALESCE(?,day),document=? WHERE id>?""",
+                       (stock_action, data.get("data") if action in {"produce","purchase","purchase-list"} else None,
+                        document.strip() if isinstance(document,str) and document.strip() else None, history_start))
         return {"ok": True}, "200 OK", headers
 
 
