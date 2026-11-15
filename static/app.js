@@ -257,12 +257,60 @@ function showAnalysis(selectField) {
         <td><input data-extra-cost aria-label="Costo aggiuntivo ${index} (€)" placeholder="€" inputmode="decimal" maxlength="18"></td></tr>`).join("")}
     </tbody></table></div>
     <h2>Risultato con costi aggiuntivi</h2>
-    <div id="analysis-result" aria-live="polite"></div>`;
+    <div class="form-grid"><label>Prezzo vendita simulato (€)<input id="scenario-price" inputmode="decimal" maxlength="14" value="${(perfume.price / scale).toFixed(2).replace(".",",")}"></label></div>
+    <div id="analysis-result" aria-live="polite"></div>
+    <div class="actions scenario-library">
+      <label>Simulazioni salvate<select id="scenario-picker"></select></label>
+      <label>Nome simulazione<input id="scenario-name" maxlength="80"></label>
+      <button type="button" class="button recipe-button" id="scenario-save">Salva simulazione</button>
+    </div>`;
   const result = detail.querySelector("#analysis-result");
   const fields = [...detail.querySelectorAll("[data-extra-cost]")];
+  const labels = [...detail.querySelectorAll(".analysis-extra td:first-child input")];
+  const priceField = detail.querySelector("#scenario-price");
+  const picker = detail.querySelector("#scenario-picker");
+  const name = detail.querySelector("#scenario-name");
+  const save = detail.querySelector("#scenario-save");
+  const scenarios = () => state.scenarios.filter(item => item.perfume_id === perfume.id);
+  picker.innerHTML = options(scenarios());
+  let saving = false;
+  picker.addEventListener("change", () => {
+    const entry = scenarios().find(item => item.id === Number(picker.value));
+    if (!entry) return;
+    const extras = JSON.parse(entry.extras);
+    name.value = entry.name;
+    priceField.value = (entry.price / scale).toFixed(2).replace(".",",");
+    fields.forEach((field,index) => {
+      field.value = extras[index].cost == null ? "" : String(extras[index].cost / scale).replace(".",",");
+      labels[index].value = extras[index].label;
+    });
+    update();
+  });
+  save.addEventListener("click", async () => {
+    const scenarioName = name.value.trim();
+    if (scenarios().some(item => item.name.toLowerCase() === scenarioName.toLowerCase())
+      && !window.confirm("Aggiornare la simulazione già salvata con questo nome?")) return;
+    saving = true;
+    update();
+    try {
+      const {scenarios: saved} = await request("cost-scenario",{
+        perfume:perfume.id, name:scenarioName, price:priceField.value.trim(),
+        extras:fields.map((field,index) => ({label:labels[index].value,cost:field.value.trim()})),
+      });
+      state.scenarios = saved;
+      if (!picker.isConnected) return;
+      picker.innerHTML = options(scenarios(),scenarios().find(item => item.name === scenarioName)?.id);
+      notify("Simulazione salvata.");
+    } catch (error) { notify(error.message); }
+    finally { saving = false; update(); }
+  });
   const update = () => {
     let total = base;
-    let invalid = false;
+    const validPrice = /^\d{1,9}(?:[.,]\d{1,2})?$/.test(priceField.value.trim());
+    const price = Math.round(Number(priceField.value.replace(",",".")) * scale);
+    const simulationNet = Math.round(price / scale * 100 / (1 + saleVatRate)) / 100;
+    let invalid = !validPrice;
+    priceField.setAttribute("aria-invalid",String(!validPrice));
     for (const field of fields) {
       const value = field.value.trim();
       const valid = !value || /^\d{1,9}(?:[.,]\d{1,6})?$/.test(value);
@@ -271,9 +319,11 @@ function showAnalysis(selectField) {
       if (valid && value) total += Math.round(Number(value.replace(",",".")) * scale);
     }
     printButton.disabled = invalid;
-    result.innerHTML = invalid ? '<p class="form-error">Inserisci un costo valido in euro.</p>' : analysisMetrics(perfume,net,total);
+    save.disabled = saving || invalid || !name.value.trim();
+    result.innerHTML = invalid ? '<p class="form-error">Verifica il prezzo e i costi in euro.</p>'
+      : analysisMetrics({...perfume,price},simulationNet,total);
   };
-  for (const field of fields) field.addEventListener("input",update);
+  for (const field of [...fields,priceField,name]) field.addEventListener("input",update);
   update();
 }
 
@@ -296,10 +346,10 @@ function printableCopy(source) {
     }
   });
   copy.querySelectorAll("td,th").forEach(cell => {
-    const link = cell.querySelector('button[data-action^="ledger:"],button[data-action^="supplier-totals"],button[data-action="sort-purchase-date"],button[data-action="sort-document-number"],button[data-action^="purchase-document:"]');
+    const link = cell.querySelector('button[data-action^="ledger:"],button[data-action^="supplier-totals"],button[data-action="sort-purchase-date"],button[data-action="sort-document-number"],button[data-action^="purchase-document:"],button[data-action^="article-history:"]');
     if (link) link.replaceWith(document.createTextNode(link.textContent));
   });
-  copy.querySelectorAll("button,[hidden],.form-error").forEach(node => node.remove());
+  copy.querySelectorAll("button,[hidden],.form-error,.scenario-library").forEach(node => node.remove());
   copy.querySelectorAll('th,td[data-label="Azioni"],td[data-label="Contabile"]').forEach(node => {
     if (node.tagName === "TD" || ["Azioni","Contabile"].includes(node.textContent.trim())) node.remove();
   });
@@ -356,6 +406,83 @@ function stockMoney(value) {
 
 function totalStockMoney() {
   return stockMoney(state.articles.reduce((sum,item) => sum + stockValue(item),0n));
+}
+
+
+function capacityStep(current, divisor) {
+  if (divisor === 0n) return current;
+  return capacityStep(divisor,current % divisor);
+}
+
+function openProductionCapacity(id) {
+  const perfume = state.perfumes.find(item => item.id === id);
+  if (!perfume) return;
+  const lines = recipe(id).map(line => ({...line,item:article(line.article)}));
+  const precision = BigInt(scale);
+  let maximum = null;
+  let step = 1n;
+  for (const line of lines) {
+    const available = BigInt(line.item?.stock ?? 0) / BigInt(line.amount);
+    maximum = maximum === null || available < maximum ? available : maximum;
+    if (unit(line.item?.unit).toLowerCase() === "pz.") {
+      const multiple = precision / capacityStep(precision,BigInt(line.amount));
+      step = step / capacityStep(step,multiple) * multiple;
+    }
+  }
+  const producible = maximum === null ? 0n : maximum / step * step;
+  const limiting = lines.filter(line => BigInt(line.item?.stock ?? 0) / BigInt(line.amount) === maximum);
+  dialog.innerHTML = `<div class="dialog-heading"><h2 id="dialog-title">Producibilità · ${escape(perfume.name)}</h2>
+    <button type="button" class="icon-button" data-action="close" aria-label="Chiudi">${icon("close")}</button></div>
+    <div class="dialog-content">${lines.length ? `<p><strong>Quantità intera producibile · ${number.format(producible)}</strong></p>
+      <p>Componenti limitanti · ${limiting.map(line => escape(line.item ? articleLabel(line.item) : "Articolo non disponibile")).join(", ")}</p>
+      ${step > 1n ? `<p>Quantità compatibili con la distinta in multipli di ${number.format(step)}.</p>` : ""}
+      <label>Quantità da produrre<input id="capacity-target" type="number" min="1" max="1000000000" step="1"></label>
+      <div id="capacity-shortage" aria-live="polite"></div>` : "<p>Completa la distinta base per calcolare la producibilità.</p>"}</div>
+    <div class="dialog-actions">${button("Chiudi","close")}</div>`;
+  dialog.showModal();
+  const field = dialog.querySelector("#capacity-target");
+  if (!field) return;
+  field.addEventListener("input", () => {
+    const result = dialog.querySelector("#capacity-shortage");
+    const quantity = Number(field.value);
+    if (!Number.isSafeInteger(quantity) || quantity < 1 || quantity > 1e9) {
+      result.textContent = field.value ? "Inserisci una quantità intera valida." : "";
+      return;
+    }
+    const missing = lines.map(line => ({
+      item:line.item, amount:BigInt(line.amount) * BigInt(quantity) - BigInt(line.item?.stock ?? 0),
+    })).filter(line => line.amount > 0n);
+    const compatible = BigInt(quantity) % step === 0n;
+    result.innerHTML = `${!compatible ? "<p>Quantità incompatibile con i multipli della distinta.</p>" : ""}
+      ${missing.length ? `<p><strong>Componenti mancanti</strong></p><ul>${missing.map(line =>
+        `<li>${escape(line.item ? articleLabel(line.item) : "Articolo non disponibile")} · ${format(Number(line.amount))} ${escape(unit(line.item?.unit))}</li>`).join("")}</ul>`
+        : "<p>Giacenze sufficienti per la quantità indicata.</p>"}`;
+  });
+}
+
+async function openArticleHistory(id) {
+  const item = article(id);
+  if (!item) return;
+  dialog.innerHTML = `<div class="dialog-heading"><h2 id="dialog-title">Storico giacenza · ${escape(articleLabel(item))}</h2>
+    <button type="button" class="icon-button" data-action="close" aria-label="Chiudi">${icon("close")}</button></div>
+    <div class="dialog-content"><p role="status">Caricamento movimenti…</p></div>
+    <div class="dialog-actions">${button("STAMPA","print-dialog","recipe-button")}${button("Chiudi","close")}</div>`;
+  const content = dialog.querySelector(".dialog-content");
+  dialog.showModal();
+  try {
+    const {entries} = await request(`articles/${id}/history`);
+    if (!dialog.open || !content.isConnected) return;
+    content.innerHTML = `<p>Giacenza attuale · <strong>${format(item.stock)} ${escape(unit(item.unit))}</strong></p>
+      ${entries.length ? `<div class="table-wrap" tabindex="0" role="region" aria-label="Storico giacenza">
+        <table><thead><tr>${["Data","Movimento","NUM. DOC","Variazione","Giacenza"].map(label => `<th scope="col">${label}</th>`).join("")}</tr></thead>
+        <tbody>${entries.map(row => `<tr>${cell("Data",shortDate(row.day))}${cell("Movimento",escape(row.action))}
+          ${cell("NUM. DOC",escape(row.document))}
+          ${cell("Variazione",row.delta == null ? "—" : (row.delta > 0 ? "+" : "") + format(row.delta),"numeric")}
+          ${cell("Giacenza",row.balance == null ? "—" : format(row.balance),"numeric")}</tr>`).join("")}</tbody></table>
+      </div>` : "<p>Nessun movimento registrato.</p>"}`;
+  } catch (error) {
+    if (dialog.open && content.isConnected) content.innerHTML = `<p class="form-error" role="alert">${escape(error.message)}</p>`;
+  }
 }
 
 function openPurchaseDocument(id) {
@@ -496,7 +623,7 @@ function table(key, items, movementActions = key === "movements" && section() ==
           + cell("Descrizione Articolo",`<strong>${name}</strong>`)
           + cell("Profumo Scentora",escape(state.perfumes.find(perfume => perfume.id === item.scentora_perfume_id)?.name))
           + cell("Unità",escape(unit(item.unit))) + cell("Costo unitario",euro(item.cost),"numeric")
-          + cell("Giacenza",`<span class="stock ${item.stock ? "" : "zero"}">${format(item.stock)}</span>`,"numeric")
+          + cell("Giacenza",`<button type="button" class="button inline text-link" data-action="article-history:${item.id}" title="Storico giacenza"><span class="stock ${item.stock ? "" : "zero"}">${format(item.stock)}</span></button>`,"numeric")
           + cell("Valore",stockMoney(stockValue(item)),"numeric")
           + cell("Azioni",`<div class="article-actions">${button("Movimenta",`stock:${item.id}`,"inline")}
             <div class="article-edit-actions"><button type="button" class="button inline" data-action="article:${item.id}" title="Modifica" aria-label="Modifica articolo">Mod.</button>
@@ -507,7 +634,7 @@ function table(key, items, movementActions = key === "movements" && section() ==
         return cell("Profumo",`<strong>${name}</strong>`) + cell("Unità",escape(unit(item.unit)))
           + cell("Costo distinta",euro(cost(item.id)),"numeric") + cell("Prezzo vendita",saleMoney.format(item.price / scale),"numeric")
           + cell("Giacenza",format(item.stock),"numeric")
-          + cell("Azioni",button("Carica",`produce:${item.id}`,"inline perfume-load") + button("Distinta Art.",`perfume:${item.id}`,"inline recipe-button"),"row-actions");
+          + cell("Azioni",button("Carica",`produce:${item.id}`,"inline perfume-load") + button("Distinta Art.",`perfume:${item.id}`,"inline recipe-button") + " " + button("Producibilità",`production-capacity:${item.id}`,"inline secondary"),"row-actions");
       case "movements":
         return cell("Profumo",`<strong>${name}</strong>`) + cell("Data",
           escape(shortDate(item.occurred_on ?? today.format(new Date(item.created.replace(" ","T")+"Z")))))
@@ -1187,6 +1314,8 @@ document.addEventListener("click", async event => {
   const [action,id] = control.dataset.action.split(":");
   if (action === "print-page" || action === "print-dialog") printReport(action === "print-dialog");
   else if (action === "supplier-totals") openSupplierTotals(Number(id));
+  else if (action === "production-capacity") openProductionCapacity(Number(id));
+  else if (action === "article-history") await openArticleHistory(Number(id));
   else if (action === "purchase-document") openPurchaseDocument(Number(id));
   else if (action === "sort-document-number") {
     sortDocumentsByNumber = true;
