@@ -422,6 +422,7 @@ th .button[data-action="supplier-totals"]:hover { background: #b5d2b8; }
     grid-template-rows: auto minmax(0, 1fr);
     padding-bottom: 0;
   }
+  .purchases-page > .work { grid-template-rows: auto auto minmax(0, 1fr); }
   .fixed-list-page .panel { display: flex; flex-direction: column; min-height: 0; }
   .fixed-list-page .panel-heading { flex: none; }
   .fixed-list-page #results { min-height: 0; }
