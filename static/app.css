@@ -481,3 +481,6 @@ form[data-form="equipment-list"] [data-action="add-equipment-line"] { justify-se
 .equipment-total > span { font-weight: 700; }
 .equipment-total > strong { background: #c8deca; }
 @media print { .print-report .equipment-total { margin-top: 10pt; break-inside: avoid; } }
+
+.sidebar-footer { margin-top: auto; display: grid; gap: 10px; }
+.sidebar-bbzo { width: 100%; }
