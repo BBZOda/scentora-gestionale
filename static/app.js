@@ -322,6 +322,14 @@ function printReport(fromDialog) {
     content.querySelector(".panel")?.prepend(heading);
   }
   report.append(brand,title,content);
+  if (!fromDialog && key === "articles") {
+    const footer = document.createElement("p");
+    footer.className = "purchase-search-total";
+    const label = document.createElement("strong");
+    label.textContent = "Valore totale di magazzino · " + totalStockMoney();
+    footer.append(label);
+    report.append(footer);
+  }
   const total = !fromDialog && document.querySelector("#purchase-search-total:not([hidden])");
   if (total) report.append(printableCopy(total));
   document.querySelector("body > .print-report")?.remove();
@@ -338,11 +346,14 @@ function stockMoney(value) {
     part.type === "fraction" ? String(cents % 100n).padStart(2,"0") : part.value).join("");
 }
 
+function totalStockMoney() {
+  return stockMoney(state.articles.reduce((sum,item) => sum + stockValue(item),0n));
+}
+
 function openStockValue() {
-  const total = state.articles.reduce((sum,item) => sum + stockValue(item),0n);
   dialog.innerHTML = `<div class="dialog-heading"><h2 id="dialog-title">Valore magazzino</h2>
     <button type="button" class="icon-button" data-action="close" aria-label="Chiudi">${icon("close")}</button></div>
-    <div class="dialog-content"><p>Valore totale degli articoli di base</p><strong class="stock-value-total">${stockMoney(total)}</strong></div>
+    <div class="dialog-content"><p>Valore totale degli articoli di base</p><strong class="stock-value-total">${totalStockMoney()}</strong></div>
     <div class="dialog-actions">${button("Chiudi","close")}</div>`;
   dialog.showModal();
 }
