@@ -430,33 +430,56 @@ def produce(db, data, user):
                (perfume_id, quantity, user["name"], json.dumps(recipe), day))
 
 
-def cancel_movement(db, data):
-    movement_id = integer(data.get("id"))
-    movement = get_row(db, "SELECT * FROM movements WHERE id=?", (movement_id,))
-    if movement["cancelled"]:
-        return
-    perfume = get_row(db, "SELECT stock FROM perfumes WHERE id=?", (movement["perfume"],))
-    quantity = movement["amount"]
-    if movement["kind"] == "load":
-        new_stock = perfume["stock"] - quantity
-        if new_stock < 0:
-            raise Problem("Giacenza del profumo insufficiente per annullare il carico.", "409 Conflict")
-        for line in json.loads(movement["recipe"]):
+def change_movement_quantity(db, movement, quantity):
+    perfume = get_row(db, "SELECT stock,unit FROM perfumes WHERE id=?", (movement["perfume"],))
+    if quantity:
+        check_unit(db, perfume["unit"], quantity)
+    delta = quantity - movement["amount"]
+    load = movement["kind"] == "load"
+    new_stock = perfume["stock"] + (delta if load else -delta)
+    if not 0 <= new_stock <= MAX_VALUE:
+        raise Problem("La correzione supera la giacenza del profumo o il limite consentito.", "409 Conflict")
+    recipe = json.loads(movement["recipe"])
+    if load and delta:
+        for line in recipe:
             article = get_row(db, """SELECT a.stock,a.archived,u.name AS unit FROM articles a
                                      JOIN units u ON u.id=a.unit WHERE a.id=?""", (line["id"],))
             if article["archived"] or article["unit"] != line["unit"]:
-                raise Problem(f"Impossibile reintegrare {line['name']}: articolo eliminato o unità di misura cambiata.",
+                raise Problem(f"Impossibile aggiornare {line['name']}: articolo eliminato o unità cambiata.",
                               "409 Conflict")
-            restored = article["stock"] + line["required"]
-            if restored > MAX_VALUE:
-                raise Problem("Il ripristino supera il limite di giacenza di un articolo.", "409 Conflict")
-            db.execute("UPDATE articles SET stock=? WHERE id=?", (restored, line["id"]))
-    else:
-        new_stock = perfume["stock"] + quantity
-        if new_stock > MAX_VALUE:
-            raise Problem("Il ripristino supera il limite di giacenza del profumo.", "409 Conflict")
+            required, remainder = divmod(line["amount"] * quantity, SCALE) if quantity else (0, 0)
+            if remainder or (line["unit"].casefold() == "pz." and required % SCALE):
+                raise Problem(f"Quantità incompatibile con l’unità o la precisione di {line['name']}.")
+            stock = article["stock"] + line["required"] - required
+            if not 0 <= stock <= MAX_VALUE:
+                raise Problem(f"La correzione supera la giacenza o il limite consentito per {line['name']}.",
+                              "409 Conflict")
+            db.execute("UPDATE articles SET stock=? WHERE id=?", (stock, line["id"]))
+            line["required"] = required
     db.execute("UPDATE perfumes SET stock=? WHERE id=?", (new_stock, movement["perfume"]))
-    db.execute("UPDATE movements SET cancelled=1 WHERE id=?", (movement_id,))
+    return json.dumps(recipe)
+
+
+def cancel_movement(db, data):
+    movement = get_row(db, "SELECT * FROM movements WHERE id=?", (integer(data.get("id")),))
+    if movement["cancelled"]:
+        return
+    change_movement_quantity(db, movement, 0)
+    db.execute("UPDATE movements SET cancelled=1 WHERE id=?", (movement["id"],))
+
+
+def edit_movement(db, data):
+    movement = get_row(db, "SELECT * FROM movements WHERE id=?", (integer(data.get("id")),))
+    if movement["cancelled"]:
+        raise Problem("Il movimento è già stato eliminato.", "409 Conflict")
+    day = movement_date(data.get("data"))
+    quantity = amount(data.get("amount"), positive=True)
+    notes = data.get("note", "")
+    if not isinstance(notes, str) or len(notes) > 1000:
+        raise Problem("Le note possono contenere al massimo 1.000 caratteri.")
+    recipe = change_movement_quantity(db, movement, quantity)
+    db.execute("UPDATE movements SET amount=?,recipe=?,occurred_on=?,notes=? WHERE id=?",
+               (quantity, recipe, day, notes.strip(), movement["id"]))
 
 
 def unload_perfume(db, data, user):
@@ -811,6 +834,8 @@ def api(env, path, method):
             produce(db, data, user)
         elif action == "unload":
             unload_perfume(db, data, user)
+        elif action == "edit-movement":
+            edit_movement(db, data)
         elif action == "cancel-movement":
             cancel_movement(db, data)
         elif action == "contact":
