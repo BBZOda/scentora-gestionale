@@ -140,7 +140,7 @@ function render() {
         ${state.demo ? "" : `<button class="icon-button" data-action="logout" aria-label="Esci">${icon("logout")}</button>`}
       </div>
     </aside>
-    <main id="main" tabindex="-1"${["perfumes","articles"].includes(current) ? ' class="fixed-list-page"' : ""}>
+    <main id="main" tabindex="-1"${current === "purchases" ? ' class="fixed-list-page purchases-page"' : ["perfumes","articles"].includes(current) ? ' class="fixed-list-page"' : ""}>
       <header class="topbar">
         <button class="icon-button menu-button" data-action="menu" aria-label="Menu principale" aria-expanded="${navOpen}" aria-controls="sidebar">${icon(navOpen ? "close" : "menu")}</button>
         <span class="breadcrumb">Scentora <span aria-hidden="true">/</span> ${sections[current][0]}</span>
@@ -538,7 +538,7 @@ function table(key, items, movementActions = key === "movements" && section() ==
       case "receipts":
       case "purchases":
         return cell("Data",shortDate(item.occurred_on))
-          + (key === "purchases" ? cell("NUM. DOC",escape(item.document_number)) : "")
+          + (key === "purchases" ? cell("NUM. DOC",item.document_id ? button(escape(item.document_number),`purchase-document:${item.document_id}`,"inline text-link") : escape(item.document_number)) : "")
           + cell(key === "receipts" ? "Cliente" : "Fornitore",item.contact_id ? button(escape(item.contact),`ledger:${item.contact_id}`,"inline text-link") : `<strong>${escape(item.contact)}</strong>`)
           + cell(key === "receipts" ? "Profumo" : "Articolo di base",
             key === "receipts" && item.perfume_id === null ? "—" : escape(item.description))
