@@ -135,9 +135,12 @@ function render() {
   root.innerHTML = `<div class="shell">
     <aside id="sidebar" class="sidebar ${navOpen ? "open" : ""}">${brand}
       <nav aria-label="Menu principale">${links}</nav>
+      <div class="sidebar-footer">
+      <a class="button primary sidebar-bbzo" href="https://bbzo-gestionale.onrender.com/" target="_blank" rel="noopener noreferrer">Vai Gestionale BBZO ${icon("arrow")}</a>
       <div class="account"><div class="avatar" aria-hidden="true">${escape(state.user.name.slice(0,1).toUpperCase())}</div>
         <div class="identity"><strong>${escape(state.user.name)}</strong><small>${state.user.role === "admin" ? "Amministratore" : "Operatore"}</small></div>
         ${state.demo ? "" : `<button class="icon-button" data-action="logout" aria-label="Esci">${icon("logout")}</button>`}
+      </div>
       </div>
     </aside>
     <main id="main" tabindex="-1"${current === "purchases" ? ' class="fixed-list-page purchases-page"' : ["perfumes","articles"].includes(current) ? ' class="fixed-list-page"' : ""}>
