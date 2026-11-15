@@ -401,3 +401,14 @@ form[data-form="purchase-list"] [data-action="add-purchase-line"] { justify-self
 
 #analysis-detail .analysis-metrics > div:nth-child(4) { background: #c8deca; }
 #analysis-detail .analysis-metrics > div:nth-child(5) { background: #d3e2ed; }
+
+th .button[data-action="supplier-totals"] {
+  min-height: 34px;
+  border-color: #8baa94;
+  background: #c8deca;
+  color: var(--ink);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+th .button[data-action="supplier-totals"]::after { content: "€" / ""; }
+th .button[data-action="supplier-totals"]:hover { background: #b5d2b8; }
