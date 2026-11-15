@@ -22,7 +22,7 @@ DEMO = os.getenv("SCENTORA_DEMO") == "1"
 DB = os.getenv("SCENTORA_DB", str(ROOT / "scentora.sqlite"))
 SESSION_SECONDS = 12 * 3600
 PASSWORD_MIN = 5
-SCHEMA_VERSION = 13
+SCHEMA_VERSION = 14
 SCALE = 1_000_000
 CENT = SCALE // 100
 MAX_VALUE = 1_000_000_000 * SCALE
@@ -151,6 +151,13 @@ def migrate_schema(db):
     if version < 13:
         db.execute("""UPDATE accounting_details SET notes='N.1'
                       WHERE article_id IS NOT NULL AND cancelled=0 AND trim(notes)=''""")
+    if version < 14:
+        db.execute("""CREATE TABLE purchase_documents (
+            id INTEGER PRIMARY KEY, contact_id INTEGER NOT NULL REFERENCES contacts(id),
+            number TEXT NOT NULL, number_key TEXT NOT NULL, occurred_on TEXT NOT NULL,
+            UNIQUE(contact_id, number_key, occurred_on))""")
+        db.execute("ALTER TABLE accounting_details ADD COLUMN document_id INTEGER REFERENCES purchase_documents(id)")
+        db.execute("CREATE INDEX purchase_document_lines ON accounting_details(document_id)")
     db.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
 
@@ -287,9 +294,16 @@ def state(db, user):
         "customers": rows(db, "SELECT * FROM contacts WHERE kind='customer' AND archived=0 ORDER BY name COLLATE NOCASE,id"),
         "suppliers": rows(db, "SELECT * FROM contacts WHERE kind='supplier' AND archived=0 ORDER BY name COLLATE NOCASE,id"),
         "accounting": rows(db, """SELECT m.id,m.occurred_on,m.description,m.amount,m.contact_id,c.name AS contact,
-                                  c.kind,d.perfume_id,d.article_id,d.unit,d.unit_cost,d.quantity,d.notes
+                                  c.kind,d.perfume_id,d.article_id,d.unit,d.unit_cost,d.quantity,d.notes,pd.number AS document_number
                                   FROM accounting_details d JOIN contact_movements m ON m.id=d.movement_id
-                                  JOIN contacts c ON c.id=m.contact_id WHERE d.cancelled=0 ORDER BY m.occurred_on DESC,m.id DESC"""),
+                                  JOIN contacts c ON c.id=m.contact_id
+                                  LEFT JOIN purchase_documents pd ON pd.id=d.document_id
+                                  WHERE d.cancelled=0 ORDER BY m.occurred_on DESC,m.id DESC"""),
+        "documents": rows(db, """SELECT pd.id,pd.number AS document_number,pd.occurred_on,c.name AS contact
+                                 FROM purchase_documents pd JOIN contacts c ON c.id=pd.contact_id
+                                 WHERE EXISTS (SELECT 1 FROM accounting_details
+                                               WHERE document_id=pd.id AND cancelled=0)
+                                 ORDER BY pd.occurred_on DESC,c.name COLLATE NOCASE,pd.number_key"""),
         "movements": rows(db, """SELECT m.id,p.name,m.amount,m.created,m.actor,m.occurred_on,m.kind,m.notes
                                  FROM movements m JOIN perfumes p ON p.id=m.perfume
                                  WHERE m.cancelled=0 ORDER BY m.id DESC LIMIT 100"""),
@@ -569,7 +583,27 @@ def cancel_purchase(db, data):
     db.execute("UPDATE accounting_details SET cancelled=1 WHERE movement_id=?", (old["movement_id"],))
 
 
-def record_accounting(db, data, kind, old=None):
+def purchase_document(db, data, contact_id, day, reuse=False):
+    number = data.get("document_number", "")
+    if not isinstance(number, str) or len(number) > 80:
+        raise Problem("Il numero documento può contenere al massimo 80 caratteri.")
+    number = number.strip()
+    if not number:
+        return None
+    key = (contact_id, number.casefold(), day)
+    existing = db.execute("""SELECT pd.id, EXISTS(SELECT 1 FROM accounting_details d
+                               WHERE d.document_id=pd.id AND d.cancelled=0) AS in_use
+                             FROM purchase_documents pd WHERE contact_id=? AND number_key=? AND occurred_on=?""",
+                          key).fetchone()
+    if existing:
+        if existing["in_use"] and not reuse:
+            raise Problem("Documento già registrato per questo fornitore e questa data.", "409 Conflict")
+        return existing["id"]
+    return db.execute("INSERT INTO purchase_documents(contact_id,number,number_key,occurred_on) VALUES (?,?,?,?)",
+                      (contact_id, number, key[1], day)).lastrowid
+
+
+def record_accounting(db, data, kind, old=None, reuse_document=False):
     key = data.get("request_key")
     if not isinstance(key, str) or not re.fullmatch(r"[a-f0-9-]{36}", key):
         raise Problem("Riapri la maschera per registrare il movimento.")
@@ -589,7 +623,7 @@ def record_accounting(db, data, kind, old=None):
     contact_id = integer(data.get("contact"))
     if old is None or contact_id != old["contact_id"]:
         get_row(db, "SELECT id FROM contacts WHERE id=? AND kind=? AND archived=0", (contact_id, kind))
-    perfume_id = article_id = unit = unit_cost = quantity = None
+    perfume_id = article_id = unit = unit_cost = quantity = document_id = None
     if kind == "customer":
         description = "Incasso generico"
         if data.get("perfume") is not None:
@@ -622,6 +656,12 @@ def record_accounting(db, data, kind, old=None):
         total = ((unit_cost * quantity + SCALE * CENT // 2) // (SCALE * CENT)) * CENT
         if not 0 < total <= MAX_VALUE:
             raise Problem("Il totale dell’acquisto deve essere almeno 0,01 € e rientrare nel limite consentito.")
+        if old is not None and "document_number" not in data:
+            existing = db.execute("SELECT number FROM purchase_documents WHERE id=?", (old["document_id"],)).fetchone()
+            document_data = {"document_number": existing["number"] if existing else ""}
+        else:
+            document_data = data
+        document_id = purchase_document(db, document_data, contact_id, day, reuse_document or old is not None)
         if old is None:
             adjust_stock(db, {"id": article_id, "amount": data["quantity"], "direction": "in"})
         else:
@@ -634,16 +674,16 @@ def record_accounting(db, data, kind, old=None):
             movement_id = old["movement_id"]
             db.execute("""UPDATE contact_movements SET contact_id=?,occurred_on=?,description=?,amount=?
                           WHERE id=?""", (contact_id, day, description, total, movement_id))
-            db.execute("""UPDATE accounting_details SET article_id=?,unit=?,unit_cost=?,quantity=?,notes=?
+            db.execute("""UPDATE accounting_details SET article_id=?,unit=?,unit_cost=?,quantity=?,notes=?,document_id=?
                           WHERE movement_id=?""",
-                       (article_id, unit, unit_cost, quantity, notes.strip(), movement_id))
+                       (article_id, unit, unit_cost, quantity, notes.strip(), document_id, movement_id))
             return
     movement = db.execute("INSERT INTO contact_movements(contact_id,occurred_on,description,amount) VALUES (?,?,?,?)",
                           (contact_id, day, description, total)).lastrowid
     db.execute("""INSERT INTO accounting_details(movement_id,perfume_id,article_id,unit,unit_cost,quantity,notes,
-                  request_key,request_hash,stock_applied) VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                  request_key,request_hash,stock_applied,document_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
                (movement, perfume_id, article_id, unit, unit_cost, quantity, notes.strip(), key, fingerprint,
-                int(kind == "supplier")))
+                int(kind == "supplier"), document_id))
 
 
 def record_purchase_list(db, data):
@@ -665,7 +705,8 @@ def record_purchase_list(db, data):
                 "article": line.get("article"), "unit": line.get("unit"),
                 "unit_cost": line.get("unit_cost"), "quantity": line.get("quantity"),
                 "note": line.get("note", ""),
-            }, "supplier")
+                **({"document_number": data["document_number"]} if "document_number" in data else {}),
+            }, "supplier", reuse_document=index > 1)
         except Problem as error:
             raise Problem(f"Riga {index} · {error}", error.status) from error
 
