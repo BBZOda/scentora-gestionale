@@ -412,3 +412,7 @@ th .button[data-action="supplier-totals"] {
 }
 th .button[data-action="supplier-totals"]::after { content: "€" / ""; }
 th .button[data-action="supplier-totals"]:hover { background: #b5d2b8; }
+
+.panel:has(> #results table[aria-label="Profumi"]) { overflow: clip; }
+#results .table-wrap:has(> table[aria-label="Profumi"]) { overflow: visible; }
+#results table[aria-label="Profumi"] thead th { position: sticky; top: 65px; z-index: 1; }
