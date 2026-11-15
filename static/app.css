@@ -398,3 +398,6 @@ form[data-form="purchase-list"] [data-action="add-purchase-line"] { justify-self
 
 .hero-site-link { position: absolute; inset-inline-end: clamp(16px, 7%, 105px); bottom: 16px; white-space: nowrap; }
 @media (max-width: 620px) { .hero:has(.hero-site-link) { padding-bottom: 60px; } }
+
+#analysis-detail .analysis-metrics > div:nth-child(4) { background: #c8deca; }
+#analysis-detail .analysis-metrics > div:nth-child(5) { background: #d3e2ed; }
