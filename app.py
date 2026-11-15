@@ -1,3 +1,5 @@
+import base64
+import binascii
 import hashlib
 import hmac
 import json
@@ -22,7 +24,7 @@ DEMO = os.getenv("SCENTORA_DEMO") == "1"
 DB = os.getenv("SCENTORA_DB", str(ROOT / "scentora.sqlite"))
 SESSION_SECONDS = 12 * 3600
 PASSWORD_MIN = 5
-SCHEMA_VERSION = 18
+SCHEMA_VERSION = 19
 SCALE = 1_000_000
 CENT = SCALE // 100
 MAX_VALUE = 1_000_000_000 * SCALE
@@ -214,6 +216,9 @@ def migrate_schema(db):
                         INSERT INTO article_history(article_id,day,action,delta,balance)
                         VALUES(NEW.id,date('now'),'Giacenza iniziale',NEW.stock,NEW.stock);
                       END""")
+    if version < 19:
+        db.execute("""CREATE TABLE perfume_photos (
+            perfume_id INTEGER PRIMARY KEY REFERENCES perfumes(id), jpeg BLOB NOT NULL)""")
     db.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
 
@@ -345,7 +350,7 @@ def state(db, user):
         "articles": rows(db, "SELECT * FROM articles WHERE archived=0 ORDER BY name COLLATE NOCASE"),
         "equivalents": EQUIVALENCES,
         "units": rows(db, "SELECT * FROM units ORDER BY name COLLATE NOCASE"),
-        "perfumes": rows(db, "SELECT * FROM perfumes ORDER BY name COLLATE NOCASE"),
+        "perfumes": rows(db, "SELECT p.*,EXISTS(SELECT 1 FROM perfume_photos f WHERE f.perfume_id=p.id) AS has_photo FROM perfumes p ORDER BY p.name COLLATE NOCASE"),
         "recipes": rows(db, "SELECT * FROM recipes ORDER BY perfume,article"),
         "customers": rows(db, "SELECT * FROM contacts WHERE kind='customer' AND archived=0 ORDER BY name COLLATE NOCASE,id"),
         "suppliers": rows(db, "SELECT * FROM contacts WHERE kind='supplier' AND archived=0 ORDER BY name COLLATE NOCASE,id"),
@@ -872,11 +877,11 @@ def cookie(name, value, age):
     return ("Set-Cookie", f"{name}={value}; Path=/; Max-Age={age}; HttpOnly; SameSite=Strict{secure}")
 
 
-def read_json(env):
+def read_json(env, limit=100_000):
     if env.get("CONTENT_TYPE", "").split(";")[0] != "application/json":
         raise Problem("Formato della richiesta non valido.")
     length = int(env.get("CONTENT_LENGTH") or 0)
-    if not 0 < length <= 100_000:
+    if not 0 < length <= limit:
         raise Problem("Richiesta vuota o troppo grande.")
     try:
         data = json.loads(env["wsgi.input"].read(length))
@@ -936,6 +941,27 @@ STOCK_ACTIONS = {
 }
 
 
+def save_perfume_photo(db, data):
+    perfume_id = integer(data.get("id"))
+    get_row(db, "SELECT id FROM perfumes WHERE id=?", (perfume_id,))
+    if "photo" not in data:
+        raise Problem("Seleziona una foto.")
+    photo = data["photo"]
+    if photo is None:
+        db.execute("DELETE FROM perfume_photos WHERE perfume_id=?", (perfume_id,))
+        return
+    try:
+        if not isinstance(photo, str) or not 0 < len(photo) <= 400_000:
+            raise ValueError()
+        jpeg = base64.b64decode(photo, validate=True)
+        if not jpeg.startswith(b"\xff\xd8\xff") or not jpeg.endswith(b"\xff\xd9"):
+            raise ValueError()
+    except (ValueError, binascii.Error):
+        raise Problem("Foto non valida o troppo grande.")
+    db.execute("""INSERT INTO perfume_photos(perfume_id,jpeg) VALUES (?,?)
+                  ON CONFLICT(perfume_id) DO UPDATE SET jpeg=excluded.jpeg""", (perfume_id,jpeg))
+
+
 def api(env, path, method):
     cookies = SimpleCookie(env.get("HTTP_COOKIE", ""))
     session = cookies["scentora"].value if "scentora" in cookies else ""
@@ -966,7 +992,7 @@ def api(env, path, method):
         if DEMO:
             upgrade_schema(db)
         if method == "POST":
-            data = read_json(env)
+            data = read_json(env, 410_000 if path == "/api/perfume-photo" else 100_000)
             db.execute("BEGIN IMMEDIATE")
         if path == "/api/login" and method == "POST" and not DEMO:
             result, status, token = login(db, data, env.get("HTTP_X_RENDER_CLIENT_IP") or env.get("REMOTE_ADDR", ""))
@@ -985,6 +1011,10 @@ def api(env, path, method):
             filename = f"scentora-backup-{date.today().isoformat()}.zip"
             headers.append(("Content-Disposition", f'attachment; filename="{filename}"'))
             return archive_backup(db), "200 OK", headers
+        photo = re.fullmatch(r"/api/perfumes/([1-9][0-9]{0,15})/photo", path)
+        if photo and method == "GET":
+            row = get_row(db, "SELECT jpeg FROM perfume_photos WHERE perfume_id=?", (int(photo[1]),))
+            return row["jpeg"], "200 OK", headers
         if path == "/api/state" and method == "GET":
             db.execute("BEGIN")
             return state(db, user), "200 OK", headers
@@ -1025,6 +1055,8 @@ def api(env, path, method):
             delete_article(db, data)
         elif action == "stock":
             adjust_stock(db, data)
+        elif action == "perfume-photo":
+            save_perfume_photo(db, data)
         elif action == "perfume":
             save_perfume(db, data)
         elif action == "produce":
@@ -1096,7 +1128,8 @@ def application(env, start_response):
             result, status, extra = api(env, path, method)
             headers.extend(extra)
             if isinstance(result, bytes):
-                mime, body = "application/zip", result
+                mime = "image/jpeg" if path.endswith("/photo") else "application/zip"
+                body = result
             else:
                 body = json.dumps(result, ensure_ascii=False).encode()
         else:
@@ -1110,7 +1143,7 @@ def application(env, start_response):
         logging.exception("Errore durante la richiesta")
         status = "500 Internal Server Error"
         body = json.dumps({"error": "Si è verificato un errore. Riprova."}).encode()
-    content_type = mime if mime == "application/zip" else mime + "; charset=utf-8"
+    content_type = mime if mime in {"application/zip", "image/jpeg"} else mime + "; charset=utf-8"
     start_response(status, headers + [("Content-Type", content_type),
                                      ("Content-Length", str(len(body)))])
     return [body]
