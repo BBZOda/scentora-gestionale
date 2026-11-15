@@ -392,3 +392,6 @@ form[data-form="purchase-list"] [data-action="add-purchase-line"] { justify-self
   .production-heading { grid-template-columns: minmax(0,1fr) auto; }
   .production-actions { grid-column: 1 / -1; grid-row: 2; }
 }
+
+.supplier-total-footer { flex-wrap: wrap; }
+.supplier-total-footer > strong { margin-inline-end: auto; }
