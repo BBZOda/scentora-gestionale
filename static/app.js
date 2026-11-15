@@ -166,7 +166,7 @@ function dashboard() {
 }
 
 const settings = {
-  articles: ["Gestisci codici, costi e disponibilità di magazzino.", "Nuovo articolo", "article", "Cerca per codice, descrizione o note"],
+  articles: ["Gestisci codici, costi e disponibilità di magazzino.", "Nuovo articolo", "article", "Cerca per codice, descrizione, fornitore o note"],
   perfumes: ["Consulta il catalogo e configura le distinte base.", "Nuovo profumo", "perfume", "Cerca un profumo"],
   movements: ["Consulta gli ultimi 100 carichi e scarichi di profumi.", "Carica profumo", "produce", "Cerca per profumo, operatore o note"],
   customers: ["Consulta le anagrafiche e i movimenti di incasso.", "Nuovo cliente", "customer", "Cerca per nome, città o telefono"],
@@ -407,7 +407,8 @@ function filtered(key) {
   const entries = accountingSection(key) ? state.accounting.filter(item =>
     item.kind === (key === "receipts" ? "customer" : "supplier")) : state[key];
   return entries.filter(item => [item.name,item.code,item.actor,item.city,item.country,item.phone,
-    item.contact,item.description,item.notes].some(value =>
+    item.contact,item.description,item.notes,
+    key === "articles" ? state.suppliers.find(supplier => supplier.id === item.supplier_id)?.name : undefined].some(value =>
     String(value ?? "").toLocaleLowerCase("it").includes(query.trim().toLocaleLowerCase("it"))));
 }
 
