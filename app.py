@@ -22,7 +22,7 @@ DEMO = os.getenv("SCENTORA_DEMO") == "1"
 DB = os.getenv("SCENTORA_DB", str(ROOT / "scentora.sqlite"))
 SESSION_SECONDS = 12 * 3600
 PASSWORD_MIN = 5
-SCHEMA_VERSION = 14
+SCHEMA_VERSION = 15
 SCALE = 1_000_000
 CENT = SCALE // 100
 MAX_VALUE = 1_000_000_000 * SCALE
@@ -158,6 +158,21 @@ def migrate_schema(db):
             UNIQUE(contact_id, number_key, occurred_on))""")
         db.execute("ALTER TABLE accounting_details ADD COLUMN document_id INTEGER REFERENCES purchase_documents(id)")
         db.execute("CREATE INDEX purchase_document_lines ON accounting_details(document_id)")
+    if version < 15:
+        db.execute("""INSERT OR IGNORE INTO purchase_documents(contact_id,number,number_key,occurred_on)
+                      SELECT DISTINCT m.contact_id,'1','1',m.occurred_on
+                      FROM accounting_details d JOIN contact_movements m ON m.id=d.movement_id
+                      JOIN contacts c ON c.id=m.contact_id
+                      WHERE c.kind='supplier' AND d.article_id IS NOT NULL AND d.cancelled=0
+                        AND lower(trim(d.notes))='n.1'""")
+        db.execute("""UPDATE accounting_details AS d
+                      SET notes='', document_id=(
+                          SELECT pd.id FROM contact_movements m JOIN purchase_documents pd
+                          ON pd.contact_id=m.contact_id AND pd.occurred_on=m.occurred_on
+                          WHERE m.id=d.movement_id AND pd.number_key='1')
+                      WHERE d.article_id IS NOT NULL AND d.cancelled=0 AND lower(trim(d.notes))='n.1'
+                        AND EXISTS (SELECT 1 FROM contact_movements m JOIN contacts c ON c.id=m.contact_id
+                                    WHERE m.id=d.movement_id AND c.kind='supplier')""")
     db.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
 
