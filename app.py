@@ -24,7 +24,7 @@ DEMO = os.getenv("SCENTORA_DEMO") == "1"
 DB = os.getenv("SCENTORA_DB", str(ROOT / "scentora.sqlite"))
 SESSION_SECONDS = 12 * 3600
 PASSWORD_MIN = 5
-SCHEMA_VERSION = 19
+SCHEMA_VERSION = 20
 SCALE = 1_000_000
 CENT = SCALE // 100
 MAX_VALUE = 1_000_000_000 * SCALE
@@ -219,6 +219,24 @@ def migrate_schema(db):
     if version < 19:
         db.execute("""CREATE TABLE perfume_photos (
             perfume_id INTEGER PRIMARY KEY REFERENCES perfumes(id), jpeg BLOB NOT NULL)""")
+    if version < 20:
+        db.execute("""CREATE TABLE ecommerce_customers (
+            id INTEGER PRIMARY KEY, source_customer_id TEXT UNIQUE,
+            name TEXT NOT NULL DEFAULT '', email TEXT NOT NULL DEFAULT '', phone TEXT NOT NULL DEFAULT '')""")
+        db.execute("""CREATE TABLE ecommerce_orders (
+            id INTEGER PRIMARY KEY, source_order_id TEXT NOT NULL UNIQUE, number TEXT NOT NULL,
+            occurred_on TEXT NOT NULL, customer_id INTEGER REFERENCES ecommerce_customers(id),
+            currency TEXT NOT NULL, payment_status TEXT NOT NULL,
+            total INTEGER NOT NULL CHECK(total >= 0), paid INTEGER CHECK(paid >= 0),
+            refunded INTEGER CHECK(refunded >= 0), shipping INTEGER CHECK(shipping >= 0),
+            taxes INTEGER CHECK(taxes >= 0), discount INTEGER CHECK(discount >= 0))""")
+        db.execute("""CREATE TABLE ecommerce_order_lines (
+            id INTEGER PRIMARY KEY, order_id INTEGER NOT NULL REFERENCES ecommerce_orders(id) ON DELETE CASCADE,
+            perfume_id INTEGER REFERENCES perfumes(id), sku TEXT NOT NULL DEFAULT '',
+            name TEXT NOT NULL, quantity INTEGER NOT NULL CHECK(quantity > 0),
+            unit_price INTEGER NOT NULL CHECK(unit_price >= 0), total INTEGER CHECK(total >= 0))""")
+        db.execute("CREATE INDEX ecommerce_orders_customer ON ecommerce_orders(customer_id)")
+        db.execute("CREATE INDEX ecommerce_lines_order ON ecommerce_order_lines(order_id)")
     db.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
 
@@ -361,6 +379,11 @@ def state(db, user):
                                   LEFT JOIN purchase_documents pd ON pd.id=d.document_id
                                   WHERE d.cancelled=0 ORDER BY m.occurred_on DESC,m.id DESC"""),
         "scenarios": rows(db, "SELECT id,perfume_id,name,price,extras FROM cost_scenarios ORDER BY name_key"),
+        "ecommerce-customers": rows(db, "SELECT * FROM ecommerce_customers ORDER BY name COLLATE NOCASE,id"),
+        "ecommerce-sales": rows(db, """SELECT o.*,c.name AS customer_name,c.email AS customer_email
+                                      FROM ecommerce_orders o LEFT JOIN ecommerce_customers c ON c.id=o.customer_id
+                                      ORDER BY o.occurred_on DESC,o.id DESC"""),
+        "ecommerce-lines": rows(db, "SELECT * FROM ecommerce_order_lines ORDER BY order_id,id"),
         "equipment": rows(db, """SELECT e.*,c.name AS contact FROM equipment e
                                  JOIN contacts c ON c.id=e.supplier_id
                                  ORDER BY e.occurred_on DESC,e.id DESC"""),
