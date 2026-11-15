@@ -240,7 +240,8 @@ function showAnalysis(selectField) {
   }
   const net = Math.round(perfume.price / scale * 100 / (1 + saleVatRate)) / 100;
   const base = cost(perfume.id);
-  detail.innerHTML = `${analysisMetrics(perfume,net,base)}
+  detail.innerHTML = `${perfume.has_photo ? `<div class="analysis-photo">${perfumePhoto(perfume)}</div>` : ""}
+    ${analysisMetrics(perfume,net,base)}
     <h2>Distinta Art.</h2>
     <div class="table-wrap" tabindex="0" role="region" aria-label="Distinta Art.">
     <table><thead><tr>${["Articolo","Quantità","Costo unitario","Costo totale"].map(label =>
@@ -349,7 +350,7 @@ function printableCopy(source) {
     const link = cell.querySelector('button[data-action^="ledger:"],button[data-action^="supplier-totals"],button[data-action="sort-purchase-date"],button[data-action="sort-document-number"],button[data-action^="purchase-document:"],button[data-action^="article-history:"]');
     if (link) link.replaceWith(document.createTextNode(link.textContent));
   });
-  copy.querySelectorAll("button,[hidden],.form-error,.scenario-library").forEach(node => node.remove());
+  copy.querySelectorAll("button,[hidden],.form-error,.scenario-library,.photo-controls").forEach(node => node.remove());
   copy.querySelectorAll('th,td[data-label="Azioni"],td[data-label="Contabile"]').forEach(node => {
     if (node.tagName === "TD" || ["Azioni","Contabile"].includes(node.textContent.trim())) node.remove();
   });
@@ -412,6 +413,82 @@ function totalStockMoney() {
 function capacityStep(current, divisor) {
   if (divisor === 0n) return current;
   return capacityStep(divisor,current % divisor);
+}
+
+function perfumePhoto(item) {
+  return item.has_photo
+    ? `<img src="/api/perfumes/${item.id}/photo${item.photo_revision ? "?v=" + item.photo_revision : ""}" alt="${escape(item.name)}">`
+    : mark;
+}
+
+function photoControls(item) {
+  return `<section class="perfume-photo-editor" data-photo-editor="${item.id}">
+    <div class="perfume-photo-preview">${perfumePhoto(item)}</div>
+    <div class="photo-controls">
+      <label class="photo-picker">${item.has_photo ? "Sostituisci foto" : "Carica foto"}
+        <input type="file" class="perfume-photo-input" accept="image/jpeg,image/png,image/webp"></label>
+      ${item.has_photo ? button("Rimuovi foto","remove-perfume-photo","secondary") : ""}
+    </div>
+  </section>`;
+}
+
+function openPerfumePhoto(id) {
+  const item = state.perfumes.find(perfume => perfume.id === id);
+  if (!item) return;
+  dialog.innerHTML = `<div class="dialog-heading"><h2 id="dialog-title">Foto · ${escape(item.name)}</h2>
+    <button type="button" class="icon-button" data-action="close" aria-label="Chiudi">${icon("close")}</button></div>
+    <div class="dialog-content photo-gallery">${photoControls(item)}</div>
+    <div class="dialog-actions">${button("Chiudi","close")}</div>`;
+  dialog.showModal();
+}
+
+async function jpegFromFile(file) {
+  if (!["image/jpeg","image/png","image/webp"].includes(file.type) || file.size > 20 * 1024 * 1024) {
+    throw new Error("Scegli una foto JPG, PNG o WebP fino a 20 MB.");
+  }
+  const bitmap = await createImageBitmap(file);
+  try {
+    const ratio = Math.min(1,640 / Math.max(bitmap.width,bitmap.height));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1,Math.round(bitmap.width * ratio));
+    canvas.height = Math.max(1,Math.round(bitmap.height * ratio));
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.drawImage(bitmap,0,0,canvas.width,canvas.height);
+    for (const quality of [0.82,0.65,0.45]) {
+      const photo = canvas.toDataURL("image/jpeg",quality).split(",")[1];
+      if (photo && photo.length <= 400000) return photo;
+    }
+    throw new Error("La foto è troppo grande dopo la compressione.");
+  } finally {
+    bitmap.close();
+  }
+}
+
+async function updatePerfumePhoto(container,file) {
+  const id = Number(container.dataset.photoEditor);
+  const item = state.perfumes.find(perfume => perfume.id === id);
+  if (!item) return;
+  const controls = [...container.querySelectorAll("button,input")];
+  controls.forEach(control => { control.disabled = true; });
+  try {
+    const photo = file ? await jpegFromFile(file) : null;
+    await request("perfume-photo",{id,photo});
+    item.has_photo = Boolean(file);
+    item.photo_revision = Date.now();
+    document.querySelectorAll(`[data-photo-editor="${id}"]`).forEach(editor => {
+      editor.outerHTML = photoControls(item);
+    });
+    const thumbnail = root.querySelector(`[data-action="perfume-photo:${id}"]`);
+    if (thumbnail) thumbnail.innerHTML = perfumePhoto(item);
+    notify(file ? "Foto salvata." : "Foto rimossa.");
+  } catch (error) {
+    notify(error.message || "Impossibile leggere la foto.");
+  } finally {
+    controls.forEach(control => { control.disabled = false; });
+    container.querySelector("input").value = "";
+  }
 }
 
 function openProductionCapacity(id) {
@@ -631,7 +708,9 @@ function table(key, items, movementActions = key === "movements" && section() ==
           + cell("Fornitore",supplier ? button(escape(supplier.name),`supplier-totals:${supplier.id}`,"inline text-link") : "");
       }
       case "perfumes":
-        return cell("Profumo",`<strong>${name}</strong>`) + cell("Unità",escape(unit(item.unit)))
+        return cell("Profumo",`<div class="perfume-name-cell">
+          <button type="button" class="photo-thumbnail" data-action="perfume-photo:${item.id}" aria-label="Foto di ${name}">${perfumePhoto(item)}</button>
+          <strong>${name}</strong></div>`) + cell("Unità",escape(unit(item.unit)))
           + cell("Costo distinta",euro(cost(item.id)),"numeric") + cell("Prezzo vendita",saleMoney.format(item.price / scale),"numeric")
           + cell("Giacenza",format(item.stock),"numeric")
           + cell("Azioni",button("Carica",`produce:${item.id}`,"inline perfume-load") + button("Distinta Art.",`perfume:${item.id}`,"inline recipe-button") + " " + button("Producibilità",`production-capacity:${item.id}`,"inline secondary"),"row-actions");
@@ -781,6 +860,7 @@ function modal(action,id,keepEquivalences = false) {
           <output id="recipe-cost" aria-labelledby="recipe-cost-label"></output></div>
           <div class="recipe-cost"><span id="sale-margin-label">Margine</span>
             <output id="sale-margin" aria-labelledby="sale-margin-label"></output></div></div></div>
+        ${item ? photoControls(item) : ""}
         <fieldset><legend>Distinta base</legend><div id="recipe-lines">${(item ? recipe(id) : [{}]).map(recipeLine).join("")}</div>
         ${button("Aggiungi articolo","add-line","secondary","plus")}</fieldset>`;
       break;
@@ -1314,6 +1394,11 @@ document.addEventListener("click", async event => {
   const [action,id] = control.dataset.action.split(":");
   if (action === "print-page" || action === "print-dialog") printReport(action === "print-dialog");
   else if (action === "supplier-totals") openSupplierTotals(Number(id));
+  else if (action === "perfume-photo") openPerfumePhoto(Number(id));
+  else if (action === "remove-perfume-photo") {
+    const container = control.closest("[data-photo-editor]");
+    if (window.confirm("Rimuovere la foto di questo profumo?")) await updatePerfumePhoto(container,null);
+  }
   else if (action === "production-capacity") openProductionCapacity(Number(id));
   else if (action === "article-history") await openArticleHistory(Number(id));
   else if (action === "purchase-document") openPurchaseDocument(Number(id));
@@ -1438,6 +1523,10 @@ function updateCount() {
   }
 }
 document.addEventListener("change", event => {
+  if (event.target.matches(".perfume-photo-input") && event.target.files[0]) {
+    void updatePerfumePhoto(event.target.closest("[data-photo-editor]"),event.target.files[0]);
+    return;
+  }
   if (event.target.name === "analysis-perfume") showAnalysis(event.target);
   if (event.target.matches('.purchase-lines select[name="article"]')) {
     const row = event.target.closest("tr");
