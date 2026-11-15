@@ -358,6 +358,7 @@ function openSupplierTotals(id) {
     if (item.kind !== "supplier") continue;
     totals.set(item.contact_id,(totals.get(item.contact_id) ?? 0n) + BigInt(item.amount));
   }
+  const total = suppliers.reduce((sum,supplier) => sum + (totals.get(supplier.id) ?? 0n),0n);
   dialog.innerHTML = `<div class="dialog-heading"><h2 id="dialog-title">Acquisti per fornitore</h2>
     <button type="button" class="icon-button" data-action="close" aria-label="Chiudi">${icon("close")}</button></div>
     <div class="dialog-content">${suppliers.length ? `<div class="table-wrap" tabindex="0" role="region" aria-label="Acquisti per fornitore">
@@ -365,7 +366,7 @@ function openSupplierTotals(id) {
       <tbody>${suppliers.map(supplier => `<tr>${cell("Fornitore",escape(supplier.name))}
         ${cell("Valore acquistato",stockMoney((totals.get(supplier.id) ?? 0n) * BigInt(scale)),"numeric")}</tr>`).join("")}
       </tbody></table></div>` : "<p>Nessun fornitore presente.</p>"}</div>
-    <div class="dialog-actions">${button("STAMPA","print-dialog","recipe-button")}${button("Chiudi","close")}</div>`;
+    <div class="dialog-actions supplier-total-footer"><strong class="numeric">Totale acquisti · ${stockMoney(total * BigInt(scale))}</strong>${button("STAMPA","print-dialog","recipe-button")}${button("Chiudi","close")}</div>`;
   dialog.showModal();
 }
 
