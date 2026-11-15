@@ -64,7 +64,7 @@ let notificationTimer;
 
 function section() {
   const key = location.hash.slice(1);
-  if (key === "accounting") return "receipts";
+  if (key === "accounting") return "purchases";
   return Object.hasOwn(sections,key) && (!usersSection(key) || state?.user.role === "admin") ? key : "dashboard";
 }
 const unit = id => state.units.find(item => item.id === id)?.name ?? "";
@@ -425,7 +425,7 @@ function listing(key) {
     ${canCreate && key !== "users" && key !== "movements" ? button(label,action,"primary","plus") : ""}
     ${key === "purchases" ? button("Acquisto a lista","purchase-list","recipe-button","plus") : ""}</div></div>
     ${key === "users" ? usersTabs(key) : ""}
-    ${accountingSection(key) ? `<nav class="accounting-nav" aria-label="Gestione Contabilità">${["receipts","purchases"].map(tab =>
+    ${accountingSection(key) ? `<nav class="accounting-nav" aria-label="Gestione Contabilità">${["purchases","receipts"].map(tab =>
       `<a href="#${tab}" ${tab === key ? 'aria-current="page"' : ""}>${tab === "receipts" ? "Incasso/Apporto Socio" : sections[tab][0]}</a>`).join("")}</nav>` : ""}
     ${["units","equivalents","documents","equipment"].includes(key) ? `<nav class="accounting-nav" aria-label="Elenchi">
       <a href="#units" ${key === "units" ? 'aria-current="page"' : ""}>Unità di misura</a>
