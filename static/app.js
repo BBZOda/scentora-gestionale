@@ -406,7 +406,7 @@ function printReport(fromDialog) {
     footer.append(label);
     report.append(footer);
   }
-  const total = !fromDialog && document.querySelector("#purchase-search-total:not([hidden])");
+  const total = !fromDialog && document.querySelector("#purchase-search-total:not([hidden]),#equipment-total");
   if (total) report.append(printableCopy(total));
   document.querySelector("body > .print-report")?.remove();
   document.body.append(report);
@@ -674,7 +674,8 @@ function listing(key) {
     <section class="panel"><div class="panel-heading">${key === "users" ? '<div class="users-toolbar">' : ""}<label class="search">${icon("search")}<input type="search" id="search" aria-label="${placeholder}" placeholder="${placeholder}" value="${escape(query)}"></label>${key === "users" ? button(label,action,"primary","plus") + "</div>" : ""}${["purchases","documents"].includes(key) ? `<div class="actions"><label>Data acquisto<input id="purchase-date" type="date" value="${escape(purchaseDate)}"></label>
       <button type="button" class="button recipe-button" data-action="clear-purchase-date">Azzera data</button></div>` : ""}<span class="count" id="count" aria-live="polite"></span></div>
     <div id="results">${table(key,filtered(key))}</div></section>
-    ${key === "purchases" ? '<div class="purchase-search-total" id="purchase-search-total" role="status" hidden></div>' : ""}`;
+    ${key === "purchases" ? '<div class="purchase-search-total" id="purchase-search-total" role="status" hidden></div>' : ""}
+    ${key === "equipment" ? '<div class="equipment-total" id="equipment-total" role="status"><span>Totale attrezzi per produzione</span><strong></strong></div>' : ""}`;
 }
 
 function filtered(key) {
@@ -1547,6 +1548,11 @@ function updateCount() {
     const matches = filtered(section());
     const total = matches.length;
     count.textContent = total === 1 ? "1 voce" : number.format(total) + " voci";
+    const equipment = document.querySelector("#equipment-total strong");
+    if (equipment) {
+      const amount = matches.reduce((sum,item) => sum + BigInt(item.amount),0n);
+      equipment.textContent = stockMoney(amount * BigInt(scale));
+    }
     const summary = document.querySelector("#purchase-search-total");
     if (summary) {
       summary.hidden = !query.trim() && !purchaseDate;
