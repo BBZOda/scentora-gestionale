@@ -16,6 +16,7 @@ const sections = {
   units: ["Elenchi", "list"],
   equivalents: ["Tabella Equivalenze", "list"],
   documents: ["Documenti acquisto", "list"],
+  equipment: ["Attrezzi per Produzione", "box"],
   users: ["Utenti", "users"],
   archives: ["Gestione Archivi", "box"],
 };
@@ -125,10 +126,10 @@ function renderLogin() {
 
 function render() {
   const current = section();
-  const links = Object.entries(sections).filter(([key]) => key !== "purchases" && key !== "equivalents" && key !== "documents" && key !== "archives" && (!usersSection(key) || state.user.role === "admin"))
+  const links = Object.entries(sections).filter(([key]) => key !== "purchases" && key !== "equivalents" && key !== "documents" && key !== "equipment" && key !== "archives" && (!usersSection(key) || state.user.role === "admin"))
     .map(([key,[label,symbol]]) => {
       const accounting = key === "receipts";
-      const active = current === key || (accounting && accountingSection(current)) || (key === "units" && ["equivalents","documents"].includes(current)) || (key === "users" && current === "archives");
+      const active = current === key || (accounting && accountingSection(current)) || (key === "units" && ["equivalents","documents","equipment"].includes(current)) || (key === "users" && current === "archives");
       return `<a href="#${accounting ? "accounting" : key}" ${active ? 'aria-current="page"' : ""}>${icon(symbol)}${accounting ? "Acquisti-Incassi" : key === "users" ? "Utenti e Archivi" : label}</a>`;
     }).join("");
   root.innerHTML = `<div class="shell">
@@ -177,6 +178,7 @@ const settings = {
   suppliers: ["Consulta le anagrafiche e i movimenti di spesa.", "Nuovo fornitore", "supplier", "Cerca per nome, città, nazione o telefono"],
   receipts: ["Registra gli incassi dei clienti.", "Nuovo incasso", "receipt", "Cerca per cliente, profumo o note"],
   purchases: ["Registra gli acquisti dai fornitori e aggiorna la giacenza degli articoli.", "Nuovo acquisto", "purchase", "Cerca per numero documento, fornitore, articolo o note"],
+  equipment: ["Consulta gli attrezzi per la produzione.", "Nuovo attrezzo", "equipment", "Cerca per descrizione, fornitore o note"],
   documents: ["Documenti registrati negli acquisti, con data e fornitore.", "", "", "Cerca per numero documento o fornitore"],
   equivalents: ["Corrispondenze tra codici, equivalenze e profumi Scentora.", "", "", "Cerca per codice, equivalenza o profumo"],
   units: ["Unità di misura disponibili nelle schede.", "Nuova unità", "unit", "Cerca un’unità"],
@@ -425,10 +427,11 @@ function listing(key) {
     ${key === "users" ? usersTabs(key) : ""}
     ${accountingSection(key) ? `<nav class="accounting-nav" aria-label="Gestione Contabilità">${["receipts","purchases"].map(tab =>
       `<a href="#${tab}" ${tab === key ? 'aria-current="page"' : ""}>${tab === "receipts" ? "Incasso/Apporto Socio" : sections[tab][0]}</a>`).join("")}</nav>` : ""}
-    ${["units","equivalents","documents"].includes(key) ? `<nav class="accounting-nav" aria-label="Elenchi">
+    ${["units","equivalents","documents","equipment"].includes(key) ? `<nav class="accounting-nav" aria-label="Elenchi">
       <a href="#units" ${key === "units" ? 'aria-current="page"' : ""}>Unità di misura</a>
       <a href="#equivalents" ${key === "equivalents" ? 'aria-current="page"' : ""}>Tabella Equivalenze</a>
       <a href="#documents" ${key === "documents" ? 'aria-current="page"' : ""}>Documenti acquisto</a>
+      <a href="#equipment" ${key === "equipment" ? 'aria-current="page"' : ""}>Attrezzi per Produzione</a>
     </nav>` : ""}
     <section class="panel"><div class="panel-heading">${key === "users" ? '<div class="users-toolbar">' : ""}<label class="search">${icon("search")}<input type="search" id="search" aria-label="${placeholder}" placeholder="${placeholder}" value="${escape(query)}"></label>${key === "users" ? button(label,action,"primary","plus") + "</div>" : ""}${["purchases","documents"].includes(key) ? `<div class="actions"><label>Data acquisto<input id="purchase-date" type="date" value="${escape(purchaseDate)}"></label>
       <button type="button" class="button recipe-button" data-action="clear-purchase-date">Azzera data</button></div>` : ""}<span class="count" id="count" aria-live="polite"></span></div>
@@ -458,7 +461,7 @@ function table(key, items, movementActions = key === "movements" && section() ==
     const messages = {articles:"Aggiungi il primo articolo di base.", perfumes:"Crea un profumo con la sua distinta base.",
       movements:"I movimenti confermati compariranno qui.", units:"Aggiungi un’unità di misura.", users:"Crea il primo utente.",
       customers:"Aggiungi il primo cliente.", suppliers:"Aggiungi il primo fornitore.",
-      receipts:"Registra il primo incasso.", purchases:"Registra il primo acquisto."};
+      equipment:"Aggiungi il primo attrezzo.", receipts:"Registra il primo incasso.", purchases:"Registra il primo acquisto."};
     return `<div class="empty"><span class="metric-icon">${icon(sections[key][1])}</span><strong>${query ? "Nessun risultato" : "Nessuna voce da mostrare"}</strong>
       <span>${query ? "Prova un altro termine di ricerca." : messages[key]}</span></div>`;
   }
@@ -469,6 +472,7 @@ function table(key, items, movementActions = key === "movements" && section() ==
     customers:["Nome","Indirizzo","Città","Telefono","Contabile","Azioni"],
     suppliers:["Nome","Indirizzo","Città","Nazione","Telefono","Contabile","Azioni"],
     receipts:["Data","Cliente","Profumo","Importo","Note"],
+    equipment:["Data","Descrizione","Importo","Fornitore","Note","Azioni"],
     documents:["NUM. DOC","Data acquisto","Fornitore","Totale documento"],
     purchases:["Data","NUM. DOC","Fornitore","Articolo di base","Costo unitario","Unità di misura","Quantità","Totale","Note","Azioni"],
     units:["Unità di misura"],
@@ -522,6 +526,12 @@ function table(key, items, movementActions = key === "movements" && section() ==
           + cell("Telefono",escape(item.phone))
           + cell("Contabile",button("Contabile",`ledger:${item.id}`,"inline"))
           + cell("Azioni",button("Modifica",`${item.kind}:${item.id}`,"inline"),"row-actions");
+      case "equipment":
+        return cell("Data",shortDate(item.occurred_on)) + cell("Descrizione",escape(item.description))
+          + cell("Importo",saleMoney.format(item.amount / scale),"numeric") + cell("Fornitore",escape(item.contact))
+          + cell("Note",escape(item.notes),"notes-cell")
+          + cell("Azioni",button("Modifica",`equipment:${item.id}`,"recipe-button")
+            + " " + button("Elimina",`delete-equipment:${item.id}`,"article-delete"),"row-actions");
       case "documents":
         return cell("NUM. DOC",button(escape(item.document_number),`purchase-document:${item.id}`,"inline text-link")) + cell("Data acquisto",shortDate(item.occurred_on)) + cell("Fornitore",escape(item.contact))
           + cell("Totale documento",stockMoney((documentTotals.get(item.id) ?? 0n) * BigInt(scale)),"numeric");
@@ -600,6 +610,7 @@ function perfumeNavigation(id) {
 
 function modal(action,id,keepEquivalences = false) {
   const item = id ? ({
+    equipment:state.equipment, "delete-equipment":state.equipment,
     article:state.articles, stock:state.articles, perfume:state.perfumes,
     produce:state.perfumes, user:state.users, customer:state.customers, supplier:state.suppliers,
   }[action] || []).find(record => record.id === id) : undefined;
@@ -725,6 +736,28 @@ function modal(action,id,keepEquivalences = false) {
         <label class="notes-field">Note<textarea name="note" rows="3" maxlength="1000">${escape(original?.notes)}</textarea></label>`;
       break;
     }
+    case "equipment": {
+      if (id && !item) return;
+      const suppliers = [...state.suppliers];
+      if (item && !suppliers.some(supplier => supplier.id === item.supplier_id)) {
+        suppliers.push({id:item.supplier_id,name:item.contact});
+      }
+      if (!suppliers.length) return notify("Crea prima un fornitore.");
+      title = item ? "Modifica attrezzo" : "Nuovo attrezzo";
+      fields = `<div class="form-grid">
+        ${input("Data","data",item?.occurred_on ?? today.format(new Date()),'type="date" required')}
+        ${input("Descrizione","description",item?.description,'maxlength="200" required')}
+        ${numericInput("Importo (€)","amount",item?.amount)}
+        ${select("Fornitore","supplier_id",options(suppliers,item?.supplier_id))}
+        </div><label class="notes-field">Note<textarea name="notes" rows="3" maxlength="1000">${escape(item?.notes)}</textarea></label>`;
+      break;
+    }
+    case "delete-equipment":
+      if (!item) return;
+      title = "Eliminare l’attrezzo?";
+      label = "Conferma eliminazione";
+      fields = `<div class="delete-summary"><strong>${escape(item.description)}</strong></div>`;
+      break;
     case "user":
       title = item ? "Modifica utente" : "Nuovo utente";
       fields = `<div class="form-grid">${input("Utente","utente",item?.name,'required maxlength="120"')}
@@ -742,7 +775,7 @@ function modal(action,id,keepEquivalences = false) {
         ${action === "perfume" ? `<div class="perfume-footer-tools">${recipeCopyControls(id)}
           <button type="button" class="button secondary" data-action="toggle-equivalences"
             aria-controls="recipe-equivalences" aria-expanded="${keepEquivalences}">Vis. Tabella Equivalenze</button></div>` : ""}
-        ${(item && ["article","perfume","customer","supplier","user"].includes(action)) || action === "edit-purchase"
+        ${(item && ["article","perfume","customer","supplier","user","equipment"].includes(action)) || action === "edit-purchase"
           ? button("STAMPA","print-dialog","recipe-button") : ""}
         ${button("Annulla","close")}<button class="button primary" type="submit">${label}</button></div>
     </form>`;
@@ -974,6 +1007,7 @@ function formData(form) {
   }
   if (action === "produce" || action === "unload") data.id = Number(data.perfume);
   if (action === "unload") data.request_key = form.dataset.requestKey;
+  if (action === "equipment") data.supplier_id = Number(data.supplier_id);
   if (action === "user") data.active = data.active === "true";
   if (action === "customer" || action === "supplier") data.kind = action;
   if (action === "receipt" || action === "purchase" || action === "edit-purchase") {
