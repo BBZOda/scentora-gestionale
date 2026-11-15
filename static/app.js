@@ -154,7 +154,8 @@ function dashboard() {
       <div class="hero-art" aria-hidden="true"><i></i><i></i><i></i>${mark}</div>
       <div class="hero-content"><p class="eyebrow">SCENTORA / PRODUZIONE</p><h1>Panoramica</h1>
       <p>Giacenze, distinte base e carichi di produzione.</p>
-      ${button("Carica profumo", "produce", "primary", "plus")}</div>
+      ${button("Carica profumo", "produce", "primary", "plus")}
+      ${button("STAMPA","print-page","recipe-button")}</div>
     </section>
     <section class="metrics" aria-label="Riepilogo">${counts.map(([label,value,link,symbol]) => `<a class="metric" href="#${link}">
       <span class="metric-icon">${icon(symbol)}</span><span class="metric-label">${label}</span><strong>${value}</strong><span class="metric-arrow">${icon("arrow")}</span>
@@ -199,7 +200,10 @@ function openArchives() {
 function analysisPage() {
   return `<div class="page-heading"><h1>Analisi Costo</h1></div>
     <section class="panel cost-analysis">
-      ${select("Profumo","analysis-perfume",options(state.perfumes),false)}
+      <div class="analysis-toolbar">
+        ${select("Profumo","analysis-perfume",options(state.perfumes),false)}
+        <button class="button recipe-button" type="button" data-action="print-page" disabled>STAMPA</button>
+      </div>
       <div id="analysis-detail"></div>
     </section>`;
 }
@@ -220,6 +224,8 @@ function analysisMetrics(perfume, net, total) {
 function showAnalysis(selectField) {
   const detail = document.querySelector("#analysis-detail");
   const perfume = state.perfumes.find(item => item.id === Number(selectField.value));
+  const printButton = selectField.closest(".analysis-toolbar").querySelector("button");
+  printButton.disabled = !perfume;
   if (!perfume) {
     detail.innerHTML = "";
     return;
@@ -256,10 +262,72 @@ function showAnalysis(selectField) {
       invalid ||= !valid;
       if (valid && value) total += Math.round(Number(value.replace(",",".")) * scale);
     }
+    printButton.disabled = invalid;
     result.innerHTML = invalid ? '<p class="form-error">Inserisci un costo valido in euro.</p>' : analysisMetrics(perfume,net,total);
   };
   for (const field of fields) field.addEventListener("input",update);
   update();
+}
+
+
+function printableCopy(source) {
+  const copy = source.cloneNode(true);
+  const controls = copy.querySelectorAll("input,select,textarea,output");
+  source.querySelectorAll("input,select,textarea,output").forEach((field,index) => {
+    const value = document.createElement("span");
+    value.className = "print-value";
+    value.textContent = field.type === "password" || field.type === "search" ? ""
+      : field.tagName === "SELECT" ? field.selectedOptions[0]?.textContent ?? "" : field.value;
+    controls[index].replaceWith(value);
+  });
+  copy.querySelectorAll(".analysis-extra").forEach(row => {
+    if (!row.textContent.trim()) row.remove();
+    else {
+      const cost = row.lastElementChild.querySelector(".print-value");
+      if (cost.textContent.trim()) cost.textContent = euro(Number(cost.textContent.replace(",",".")) * scale);
+    }
+  });
+  copy.querySelectorAll('td').forEach(cell => {
+    const link = cell.querySelector('button[data-action^="ledger:"]');
+    if (link) link.replaceWith(document.createTextNode(link.textContent));
+  });
+  copy.querySelectorAll("button,[hidden],.form-error").forEach(node => node.remove());
+  copy.querySelectorAll('th,td[data-label="Azioni"],td[data-label="Contabile"]').forEach(node => {
+    if (node.tagName === "TD" || ["Azioni","Contabile"].includes(node.textContent.trim())) node.remove();
+  });
+  copy.querySelectorAll("label").forEach(label => {
+    if (!label.querySelector(".print-value")?.textContent.trim()) label.remove();
+  });
+  return copy;
+}
+
+function printReport(fromDialog) {
+  const key = section();
+  const source = fromDialog ? dialog.querySelector(".dialog-content")
+    : document.querySelector(key === "analysis" ? ".cost-analysis" : key === "dashboard" ? "#work" : "#results");
+  if (!source || source.querySelector('[role="status"]:only-child')?.textContent === "Caricamento movimenti…") return;
+  const report = document.createElement("article");
+  report.className = "print-report";
+  if (!fromDialog && ["articles","purchases"].includes(key)) report.classList.add("print-wide");
+  const title = document.createElement("h1");
+  title.textContent = fromDialog ? dialog.querySelector("#dialog-title").textContent : sections[key][0];
+  const brand = document.createElement("p");
+  brand.textContent = "SCENTORA";
+  brand.className = "print-brand";
+  const content = printableCopy(source);
+  content.querySelectorAll(".hero,.panel-heading").forEach(node => node.remove());
+  if (key === "dashboard" && !fromDialog) {
+    const heading = document.createElement("h2");
+    heading.textContent = "Ultimi movimenti";
+    content.querySelector(".panel")?.prepend(heading);
+  }
+  report.append(brand,title,content);
+  const total = !fromDialog && document.querySelector("#purchase-search-total:not([hidden])");
+  if (total) report.append(printableCopy(total));
+  document.querySelector("body > .print-report")?.remove();
+  document.body.append(report);
+  window.addEventListener("afterprint", () => report.remove(), {once: true});
+  window.print();
 }
 
 function listing(key) {
@@ -268,6 +336,7 @@ function listing(key) {
   return `<div class="page-heading"><div><h1>${sections[key][0]}</h1><p>${description}</p></div>
     <div class="actions">${key === "perfumes" ? button("Scarica profumo","unload","perfume-unload")
       + button("Carica profumo","produce","perfume-load") : ""}
+    ${button("STAMPA","print-page","recipe-button")}
     ${canCreate && key !== "users" ? button(label,action,"primary","plus") : ""}
     ${key === "purchases" ? button("Acquisto a lista","purchase-list","recipe-button","plus") : ""}</div></div>
     ${key === "users" ? usersTabs(key) : ""}
@@ -556,6 +625,8 @@ function modal(action,id,keepEquivalences = false) {
         ${action === "perfume" ? `<div class="perfume-footer-tools">${recipeCopyControls(id)}
           <button type="button" class="button secondary" data-action="toggle-equivalences"
             aria-controls="recipe-equivalences" aria-expanded="${keepEquivalences}">Vis. Tabella Equivalenze</button></div>` : ""}
+        ${(item && ["article","perfume","customer","supplier","user"].includes(action)) || action === "edit-purchase"
+          ? button("STAMPA","print-dialog","recipe-button") : ""}
         ${button("Annulla","close")}<button class="button primary" type="submit">${label}</button></div>
     </form>`;
   if (action === "perfume") {
@@ -818,7 +889,7 @@ async function openLedger(id) {
       <button class="icon-button" data-action="close" aria-label="Chiudi">${icon("close")}</button>
     </div></div>
     <div class="dialog-content" id="ledger-content"><p role="status">Caricamento movimenti…</p></div>
-    <div class="dialog-actions">${button("Chiudi","close")}</div>`;
+    <div class="dialog-actions">${button("STAMPA","print-dialog","recipe-button")} ${button("Chiudi","close")}</div>`;
   const content = dialog.querySelector("#ledger-content");
   dialog.showModal();
   try {
@@ -913,7 +984,8 @@ document.addEventListener("click", async event => {
   const control = event.target.closest("[data-action]");
   if (!control) return;
   const [action,id] = control.dataset.action.split(":");
-  if (action === "menu") {
+  if (action === "print-page" || action === "print-dialog") printReport(action === "print-dialog");
+  else if (action === "menu") {
     navOpen = !navOpen;
     document.querySelector("#sidebar").classList.toggle("open", navOpen);
     control.setAttribute("aria-expanded",navOpen);
