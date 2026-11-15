@@ -383,3 +383,12 @@ form[data-form="purchase-list"] [data-action="add-purchase-line"] { justify-self
 
 .article-edit-actions .button { min-width: 48px; }
 .stock-value-total { font-size: 32px; font-variant-numeric: tabular-nums; }
+
+.production-heading { display: grid; grid-template-columns: minmax(0,1fr) auto minmax(0,1fr); }
+.production-heading > .actions:last-child { justify-self: end; }
+.production-actions { justify-content: center; }
+.production-actions .button { min-height: 48px; min-width: 160px; }
+@media (max-width: 1250px) {
+  .production-heading { grid-template-columns: minmax(0,1fr) auto; }
+  .production-actions { grid-column: 1 / -1; grid-row: 2; }
+}
