@@ -414,19 +414,19 @@ th .button[data-action="supplier-totals"]::after { content: "€" / ""; }
 th .button[data-action="supplier-totals"]:hover { background: #b5d2b8; }
 
 @media screen {
-  .perfume-page { display: flex; flex-direction: column; height: max(100dvh, 540px); }
-  .perfume-page > .topbar { flex: none; }
-  .perfume-page > .work {
+  .fixed-list-page { display: flex; flex-direction: column; height: max(100dvh, 540px); }
+  .fixed-list-page > .topbar { flex: none; }
+  .fixed-list-page > .work {
     flex: 1;
     min-height: 0;
     grid-template-rows: auto minmax(0, 1fr);
     padding-bottom: 0;
   }
-  .perfume-page .panel { display: flex; flex-direction: column; min-height: 0; }
-  .perfume-page .panel-heading { flex: none; }
-  .perfume-page #results { min-height: 0; }
-  .perfume-page #results .table-wrap { max-height: 100%; }
-  .perfume-page thead th { position: sticky; top: 0; z-index: 1; }
+  .fixed-list-page .panel { display: flex; flex-direction: column; min-height: 0; }
+  .fixed-list-page .panel-heading { flex: none; }
+  .fixed-list-page #results { min-height: 0; }
+  .fixed-list-page #results .table-wrap { max-height: 100%; }
+  .fixed-list-page thead th { position: sticky; top: 0; z-index: 1; }
 }
 
 table[aria-label="Clienti"] td[data-label="Contabile"] .button,
