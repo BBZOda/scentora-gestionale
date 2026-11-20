@@ -132,7 +132,7 @@ function render() {
     .map(([key,[label,symbol]]) => {
       const accounting = key === "receipts";
       const active = current === key || (accounting && accountingSection(current)) || (key === "units" && ["equivalents","documents","equipment"].includes(current)) || (key === "users" && current === "archives");
-      return `<a href="#${accounting ? "accounting" : key}" ${active ? 'aria-current="page"' : ""}>${icon(symbol)}${accounting ? "Acquisti-Incassi" : key === "users" ? "Utenti e Archivi" : label}</a>`;
+      return `<a href="#${accounting ? "accounting" : key}" ${accounting || key === "ecommerce-sales" ? 'class="highlight-nav"' : ""} ${active ? 'aria-current="page"' : ""}>${icon(symbol)}${accounting ? "Acquisti-Incassi" : key === "users" ? "Utenti e Archivi" : label}</a>`;
     }).join("");
   root.innerHTML = `<div class="shell">
     <aside id="sidebar" class="sidebar ${navOpen ? "open" : ""}">${brand}
@@ -896,13 +896,14 @@ function table(key, items, movementActions = key === "movements" && section() ==
     ? button(purchaseDateOrder === "ascending" ? "Data ↑" : "Data ↓","sort-purchase-date","recipe-button")
     : key === "articles" && label === "Fornitore"
     ? '<button type="button" class="button inline text-link" data-action="supplier-totals" title="Totali acquisti per fornitore">Fornitore</button>'
-    : label}</th>`).join("")}</tr></thead><tbody>${body}</tbody></table></div>`;
+    : key === "documents" && label === "Totale documento" ? 'Totale documento<br><span>Imponibile</span>' : label}</th>`).join("")}</tr></thead><tbody>${body}</tbody></table></div>`;
 }
 
 const options = (items,id,label = item => item.name) => '<option value="">Seleziona…</option>' +
   items.map(item => `<option value="${item.id}" ${item.id === id ? "selected" : ""}>${escape(label(item))}</option>`).join("");
 const input = (label,name,value = "",attrs = "required") => `<label>${label}<input name="${name}" value="${escape(value)}" ${attrs}></label>`;
 const numericInput = (label,name,value,required = true) => input(label,name,value == null ? "" : value / scale,`inputmode="decimal" maxlength="22" ${required ? "required" : ""}`);
+const vatFields = item => input("IVA (%)","vat_rate",(item?.vat_rate ?? 0) / 100,'inputmode="decimal" required') + input("Importo Ivato (€)","gross_amount","",'readonly aria-live="polite"');
 const select = (label,name,choices,required = true) =>
   `<label>${label}<select name="${name}" ${required ? "required" : ""}>${choices}</select></label>`;
 const units = id => select("Unità di misura","unit",options(state.units,id));
@@ -966,7 +967,7 @@ function modal(action,id,keepEquivalences = false) {
         ${select("Profumo Scentora","scentora_perfume_id",options(state.perfumes,item?.scentora_perfume_id),false)}
         ${select("Fornitore","supplier_id",options(state.suppliers,item?.supplier_id),false)}
         ${units(item?.unit)}
-        ${numericInput("Costo unitario (€)","cost",item?.cost)}
+        ${numericInput("Costo unitario Imponibile (€)","cost",item?.cost)}${vatFields(item)}
         ${item ? "" : numericInput("Giacenza iniziale","stock",null,false)}</div>
         <label class="notes-field">Note<textarea name="notes" rows="3" maxlength="1000">${escape(item?.notes)}</textarea></label>`;
       break;
@@ -1102,8 +1103,8 @@ function modal(action,id,keepEquivalences = false) {
       fields = `<div class="form-grid">
         ${input("Data","data",item?.occurred_on ?? today.format(new Date()),'type="date" required')}
         ${input("Descrizione","description",item?.description,'maxlength="200" required')}
-        ${numericInput("Importo (€)","amount",item?.amount)}
-        ${select("Fornitore","supplier_id",options(suppliers,item?.supplier_id))}
+        <div class="wide-field">${select("Fornitore","supplier_id",options(suppliers,item?.supplier_id))}</div>
+        ${numericInput("Importo Imponibile (€)","amount",item?.amount)}${vatFields(item)}
         </div><label class="notes-field">Note<textarea name="notes" rows="3" maxlength="1000">${escape(item?.notes)}</textarea></label>`;
       break;
     }
@@ -1264,6 +1265,13 @@ function recipeEquivalenceWarning(item, perfumeName) {
 }
 
 function updatePreview() {
+  const vatForm = dialog.querySelector('form:is([data-form="article"],[data-form="equipment"])');
+  if (vatForm) {
+    const net = (vatForm.elements.cost ?? vatForm.elements.amount).value.trim().replace(",", ".");
+    const vat = vatForm.elements.vat_rate.value.trim().replace(",", ".");
+    const valid = net !== "" && vat !== "" && Number.isFinite(Number(net)) && Number.isFinite(Number(vat)) && Number(vat) >= 0 && Number(vat) <= 100;
+    vatForm.elements.gross_amount.value = valid ? (Math.round((Number(net) * (1 + Number(vat) / 100) + Number.EPSILON) * 100) / 100).toLocaleString("it-IT", {minimumFractionDigits:2,maximumFractionDigits:2}) : "";
+  }
   const purchase = dialog.querySelector('form:is([data-form="purchase"],[data-form="edit-purchase"])');
   if (purchase) {
     const id = Number(purchase.elements.article.value);
@@ -1432,7 +1440,7 @@ async function openLedger(id) {
     if (!dialog.open || !content.isConnected) return;
     const detail = movements.length ? `<div class="table-wrap" tabindex="0" role="region" aria-label="${category}">
       <table><thead><tr><th scope="col">Data</th><th scope="col">Descrizione</th><th scope="col">Importo</th><th scope="col">Note</th></tr></thead>
-      <tbody>${movements.map(item => `<tr>${cell("Data",escape(shortDate(item.occurred_on)))}
+      <tbody>${movements.map(item => `<tr>${cell("Data",escape(shortDate(item.occurred_on)),"date-cell")}
         ${cell("Descrizione",escape(item.description))}${cell("Importo",euro(item.amount),"numeric")}${cell("Note",escape(item.notes),"notes-cell")}</tr>`).join("")}</tbody>
       <tfoot><tr><th scope="row" colspan="2">Totale</th>
         ${cell("Totale",euro(movements.reduce((sum,item) => sum + item.amount,0)),"numeric")}<td></td>

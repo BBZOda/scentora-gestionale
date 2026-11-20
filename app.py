@@ -24,7 +24,7 @@ DEMO = os.getenv("SCENTORA_DEMO") == "1"
 DB = os.getenv("SCENTORA_DB", str(ROOT / "scentora.sqlite"))
 SESSION_SECONDS = 12 * 3600
 PASSWORD_MIN = 5
-SCHEMA_VERSION = 20
+SCHEMA_VERSION = 21
 SCALE = 1_000_000
 CENT = SCALE // 100
 MAX_VALUE = 1_000_000_000 * SCALE
@@ -237,6 +237,10 @@ def migrate_schema(db):
             unit_price INTEGER NOT NULL CHECK(unit_price >= 0), total INTEGER CHECK(total >= 0))""")
         db.execute("CREATE INDEX ecommerce_orders_customer ON ecommerce_orders(customer_id)")
         db.execute("CREATE INDEX ecommerce_lines_order ON ecommerce_order_lines(order_id)")
+    if version < 21:
+        db.execute("ALTER TABLE articles ADD COLUMN vat_rate INTEGER NOT NULL DEFAULT 0 CHECK(vat_rate BETWEEN 0 AND 10000)")
+        db.execute("ALTER TABLE equipment ADD COLUMN vat_rate INTEGER NOT NULL DEFAULT 0 CHECK(vat_rate BETWEEN 0 AND 10000)")
+        db.execute("UPDATE contact_movements SET description='Apporto Soci' WHERE description='Incasso generico' AND contact_id IN (SELECT id FROM contacts WHERE kind='customer')")
     db.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
 
@@ -418,6 +422,7 @@ def save_article(db, data):
     fields = {
         "code": code, "name": field(data, "descrizione"),
         "unit": unit, "cost": amount(data.get("cost") or 0), "stock": stock,
+        **({"vat_rate": vat_rate(data)} if "vat_rate" in data else {}),
     }
     if "notes" in data:
         notes = data["notes"]
@@ -631,6 +636,13 @@ def save_contact(db, data):
     replace_record(db, "contacts", contact_id, fields)
 
 
+def vat_rate(data):
+    value = amount(data.get("vat_rate") or 0)
+    if value > 100 * SCALE or value % (SCALE // 100):
+        raise Problem("Inserisci un’IVA tra 0 e 100, con al massimo due decimali.")
+    return value // (SCALE // 100)
+
+
 def save_equipment(db, data):
     record_id = data.get("id")
     supplier_id = integer(data.get("supplier_id"))
@@ -647,6 +659,7 @@ def save_equipment(db, data):
     replace_record(db, "equipment", record_id, {
         "occurred_on": movement_date(data.get("data")), "description": field(data, "description", 200),
         "amount": price, "supplier_id": supplier_id, "notes": notes.strip(),
+        **({"vat_rate": vat_rate(data)} if "vat_rate" in data else {}),
     })
 
 
@@ -759,7 +772,7 @@ def record_accounting(db, data, kind, old=None, reuse_document=False):
         get_row(db, "SELECT id FROM contacts WHERE id=? AND kind=? AND archived=0", (contact_id, kind))
     perfume_id = article_id = unit = unit_cost = quantity = document_id = None
     if kind == "customer":
-        description = "Incasso generico"
+        description = "Apporto Soci"
         if data.get("perfume") is not None:
             perfume_id = integer(data["perfume"])
             perfume = get_row(db, "SELECT name FROM perfumes WHERE id=?", (perfume_id,))
