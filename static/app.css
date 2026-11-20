@@ -489,8 +489,3 @@ form[data-form="equipment-list"] [data-action="add-equipment-line"] { justify-se
 .date-cell { white-space: nowrap; min-width: 105px; }
 .wide-field { grid-column: 1 / -1; }
 .wide-field > label { display: grid; gap: 7px; }
-/* A shared sage panel groups the two e-commerce entries. */
-.ecommerce-nav-group { display: grid; gap: 5px; padding: 5px; border: 1px solid #9cbba8; border-radius: 12px; background: #d8e7dd; }
-.sidebar nav .ecommerce-nav-group a { color: #243e31; }
-.sidebar nav .ecommerce-nav-group a:hover { background: #c1dacb; color: #182c21; }
-.sidebar nav .ecommerce-nav-group a[aria-current] { background: #afcdbb; border-color: #7a9e88; color: #182c21; box-shadow: inset 2px 0 #426b52; }

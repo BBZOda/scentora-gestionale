@@ -134,8 +134,6 @@ function render() {
       const accounting = key === "receipts";
       const active = current === key || (accounting && accountingSection(current)) || (key === "units" && ["vat_codes","equivalents","documents","equipment"].includes(current)) || (key === "users" && current === "archives");
       const link = `<a href="#${accounting ? "accounting" : key}" ${active ? 'aria-current="page"' : ""}>${icon(symbol)}${accounting ? "Acquisti-Incassi" : key === "users" ? "Utenti e Archivi" : label}</a>`;
-      if (key === "ecommerce-sales") return `<div class="ecommerce-nav-group" role="group" aria-label="E-commerce">${link}`;
-      if (key === "ecommerce-customers") return `${link}</div>`;
       return link;
     }).join("");
   root.innerHTML = `<div class="shell">
