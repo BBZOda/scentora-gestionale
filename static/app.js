@@ -233,9 +233,9 @@ function analysisMetricValues(perfume, net, total) {
   return [
     ["Prezzo vendita IVATO",saleMoney.format(perfume.price / scale)],
     ["Prezzo vendita imponibile",net === null ? "—" : saleMoney.format(net)],
-    ["Costo totale distinta",euro(total)],
+    ["Costo totale distinta Imponibile",euro(total)],
     ["Margine %",net > 0 ? marginPercent.format(profit / net) : "—"],
-    ["Margine valore",net === null ? "—" : saleMoney.format(profit)],
+    ["Margine valore Imponibile",net === null ? "—" : saleMoney.format(profit)],
   ];
 }
 
@@ -269,18 +269,18 @@ function showAnalysis(selectField) {
   detail.innerHTML = `${analysisMetrics(perfume,net,base,true)}
     <h2>Distinta Art.</h2>
     <div class="table-wrap" tabindex="0" role="region" aria-label="Distinta Art.">
-    <table><thead><tr>${["Articolo","Quantità","Costo unitario Imponibile","Costo totale"].map(label =>
+    <table><thead><tr>${["Articolo","Quantità","Costo unitario Imponibile","Costo totale Imponibile"].map(label =>
       `<th scope="col">${label}</th>`).join("")}</tr></thead><tbody>
       ${recipe(perfume.id).map(line => {
         const item = article(line.article);
         return `<tr>${cell("Articolo",escape(item ? articleLabel(item) : "Articolo archiviato"))}
           ${cell("Quantità",escape(format(line.amount) + (item ? " " + unit(item.unit) : "")))}
           ${cell("Costo unitario Imponibile",unitEuro(item?.cost ?? 0),"numeric")}
-          ${cell("Costo totale",euro(lineCost(item,line.amount / scale)),"numeric")}</tr>`;
+          ${cell("Costo totale Imponibile",euro(lineCost(item,line.amount / scale)),"numeric")}</tr>`;
       }).join("")}
       ${[1,2,3].map(index => `<tr class="analysis-extra"><td colspan="3">
         <input aria-label="Articolo aggiuntivo ${index}" placeholder="Articolo aggiuntivo" maxlength="120"></td>
-        <td><input data-money-input data-extra-cost aria-label="Costo aggiuntivo ${index} (€)" placeholder="€" inputmode="decimal" maxlength="18"></td></tr>`).join("")}
+        <td><input data-money-input data-extra-cost aria-label="Costo aggiuntivo ${index} Imponibile (€)" placeholder="Imponibile €" inputmode="decimal" maxlength="18"></td></tr>`).join("")}
     </tbody></table></div>
     <h2>Risultato con costi aggiuntivi</h2>
     <div id="analysis-result" aria-live="polite"></div>
