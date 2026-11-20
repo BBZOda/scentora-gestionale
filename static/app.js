@@ -679,7 +679,7 @@ function openPurchaseDocument(id) {
     <div class="dialog-content">
       <p><strong>${escape(entry.contact)}</strong> · ${shortDate(entry.occurred_on)}</p>
       <div class="table-wrap" tabindex="0" role="region" aria-label="Articoli del documento">
-        <table><thead><tr>${["Articolo","Quantità","Costo unitario Imponibile","Totale","Note"].map(label =>
+        <table class="document-detail-table"><thead><tr>${["Articolo","Quantità","Costo unitario Imponibile","Totale","Note"].map(label =>
           `<th scope="col">${label}</th>`).join("")}</tr></thead>
           <tbody>${lines.map(item => `<tr>${cell("Articolo",escape(item.description))}
             ${cell("Quantità",format(item.quantity) + " " + escape(item.unit),"numeric")}
@@ -904,7 +904,7 @@ function table(key, items, movementActions = key === "movements" && section() ==
     ? button(purchaseDateOrder === "ascending" ? "Data ↑" : "Data ↓","sort-purchase-date","recipe-button")
     : key === "articles" && label === "Fornitore"
     ? '<button type="button" class="button inline text-link" data-action="supplier-totals" title="Totali acquisti per fornitore">Fornitore</button>'
-    : key === "documents" && label === "Totale documento" ? 'Totale documento<br><span>Imponibile</span>' : label}</th>`).join("")}</tr></thead><tbody>${body}</tbody></table></div>`;
+    : key === "documents" && label === "Totale documento" ? 'Totale documento<br><span>Imponibile</span>' : key === "purchases" && label.endsWith(" Imponibile") ? label.replace(" Imponibile", "<br>Imponibile") : label}</th>`).join("")}</tr></thead><tbody>${body}</tbody></table></div>`;
 }
 
 const options = (items,id,label = item => item.name) => '<option value="">Seleziona…</option>' +
@@ -1495,7 +1495,7 @@ async function openLedger(id) {
         <table><thead><tr><th scope="col">Data</th><th scope="col">Descrizione</th><th scope="col">Importo Imponibile</th><th scope="col">Note</th></tr></thead>
         <tbody>${equipmentRows.map(item => `<tr>${cell("Data",shortDate(item.occurred_on))}
           ${cell("Descrizione",escape(item.description))}${cell("Costo Imponibile",saleMoney.format(item.amount / scale),"numeric")}${cell("Note",escape(item.notes),"notes-cell")}</tr>`).join("")}</tbody>
-        </table></div><p>Totale attrezzi Imponibile · <strong>${out(equipmentTotal)}</strong></p>` : "";
+        </table></div><p class="ledger-equipment-total">Totale attrezzi Imponibile · <strong>${out(equipmentTotal)}</strong></p>` : "";
     const totalLine = equipmentRows.length ? `<p><strong>Totale acquisti Imponibile · ${out(grandTotal)}</strong></p>` : "";
     const fullDetail = (equipmentRows.length && !movements.length ? "" : detail) + equipmentDetail + totalLine;
     content.innerHTML = fullDetail;

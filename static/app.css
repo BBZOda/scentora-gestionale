@@ -489,3 +489,18 @@ form[data-form="equipment-list"] [data-action="add-equipment-line"] { justify-se
 .date-cell { white-space: nowrap; min-width: 105px; }
 .wide-field { grid-column: 1 / -1; }
 .wide-field > label { display: grid; gap: 7px; }
+
+/* Keep short document titles whole and separate long purchase labels. */
+.document-detail-table th { overflow-wrap: normal; word-break: normal; }
+.document-detail-table th:nth-child(2), .document-detail-table th:nth-child(5) { white-space: nowrap; }
+.document-detail-table th:nth-child(2) { min-width: 88px; }
+.document-detail-table th:nth-child(5) { min-width: 65px; }
+table[aria-label="Acquisto Articoli"] th { overflow-wrap: normal; }
+.ledger-equipment-total { margin-top: 28px; }
+@media (min-width: 761px) {
+  table[aria-label="Profumi"] th:nth-child(1) { width: 27%; }
+  table[aria-label="Profumi"] th:nth-child(2) { width: 9%; }
+  table[aria-label="Profumi"] th:nth-child(3) { width: 19%; }
+  table[aria-label="Profumi"] :is(th,td):nth-child(2),
+  table[aria-label="Profumi"] :is(th,td):nth-child(3) { padding-left: 28px; }
+}
