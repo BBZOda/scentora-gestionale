@@ -504,3 +504,8 @@ table[aria-label="Acquisto Articoli"] th { overflow-wrap: normal; }
   table[aria-label="Profumi"] :is(th,td):nth-child(2),
   table[aria-label="Profumi"] :is(th,td):nth-child(3) { padding-left: 28px; }
 }
+
+/* Center article unit costs beneath their column heading. */
+@media (min-width: 761px) {
+  table[aria-label="Articoli di base"] :is(th,td):nth-child(5) { text-align: center; }
+}
