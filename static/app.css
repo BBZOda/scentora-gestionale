@@ -496,7 +496,7 @@ form[data-form="equipment-list"] [data-action="add-equipment-line"] { justify-se
 .document-detail-table th:nth-child(2) { min-width: 88px; }
 .document-detail-table th:nth-child(5) { min-width: 65px; }
 table[aria-label="Acquisto Articoli"] th { overflow-wrap: normal; }
-.ledger-equipment-total { margin-top: 28px; }
+.dialog-content > p.ledger-equipment-total { margin-top: 48px; }
 @media (min-width: 761px) {
   table[aria-label="Profumi"] th:nth-child(1) { width: 27%; }
   table[aria-label="Profumi"] th:nth-child(2) { width: 9%; }
@@ -514,3 +514,6 @@ table[aria-label="Acquisto Articoli"] th { overflow-wrap: normal; }
 @media (min-width: 761px) {
   table[aria-label="Profumi"] :is(th,td):nth-child(3) { text-align: center; }
 }
+
+/* Align supplier equipment amounts with their heading. */
+[aria-label="Attrezzi per Produzione"] table :is(th,td):nth-child(3) { text-align: center; }
