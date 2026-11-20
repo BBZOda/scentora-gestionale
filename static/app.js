@@ -231,7 +231,7 @@ function analysisPage() {
 function analysisMetricValues(perfume, net, total) {
   const profit = net - total / scale;
   return [
-    ["Prezzo vendita",saleMoney.format(perfume.price / scale)],
+    ["Prezzo vendita IVATO",saleMoney.format(perfume.price / scale)],
     ["Prezzo vendita imponibile",net === null ? "—" : saleMoney.format(net)],
     ["Costo totale distinta",euro(total)],
     ["Margine %",net > 0 ? marginPercent.format(profit / net) : "—"],
@@ -269,13 +269,13 @@ function showAnalysis(selectField) {
   detail.innerHTML = `${analysisMetrics(perfume,net,base,true)}
     <h2>Distinta Art.</h2>
     <div class="table-wrap" tabindex="0" role="region" aria-label="Distinta Art.">
-    <table><thead><tr>${["Articolo","Quantità","Costo unitario","Costo totale"].map(label =>
+    <table><thead><tr>${["Articolo","Quantità","Costo unitario Imponibile","Costo totale"].map(label =>
       `<th scope="col">${label}</th>`).join("")}</tr></thead><tbody>
       ${recipe(perfume.id).map(line => {
         const item = article(line.article);
         return `<tr>${cell("Articolo",escape(item ? articleLabel(item) : "Articolo archiviato"))}
           ${cell("Quantità",escape(format(line.amount) + (item ? " " + unit(item.unit) : "")))}
-          ${cell("Costo unitario",unitEuro(item?.cost ?? 0),"numeric")}
+          ${cell("Costo unitario Imponibile",unitEuro(item?.cost ?? 0),"numeric")}
           ${cell("Costo totale",euro(lineCost(item,line.amount / scale)),"numeric")}</tr>`;
       }).join("")}
       ${[1,2,3].map(index => `<tr class="analysis-extra"><td colspan="3">
@@ -679,11 +679,11 @@ function openPurchaseDocument(id) {
     <div class="dialog-content">
       <p><strong>${escape(entry.contact)}</strong> · ${shortDate(entry.occurred_on)}</p>
       <div class="table-wrap" tabindex="0" role="region" aria-label="Articoli del documento">
-        <table><thead><tr>${["Articolo","Quantità","Costo unitario","Totale","Note"].map(label =>
+        <table><thead><tr>${["Articolo","Quantità","Costo unitario Imponibile","Totale","Note"].map(label =>
           `<th scope="col">${label}</th>`).join("")}</tr></thead>
           <tbody>${lines.map(item => `<tr>${cell("Articolo",escape(item.description))}
             ${cell("Quantità",format(item.quantity) + " " + escape(item.unit),"numeric")}
-            ${cell("Costo unitario",unitEuro(item.unit_cost),"numeric")}
+            ${cell("Costo unitario Imponibile",unitEuro(item.unit_cost),"numeric")}
             ${cell("Totale",euro(item.amount),"numeric")}
             ${cell("Note",escape(item.notes),"notes-cell")}</tr>`).join("")}</tbody>
           <tfoot><tr><th scope="row" colspan="3">Totale documento</th>
@@ -760,7 +760,7 @@ function listing(key) {
       <button type="button" class="button recipe-button" data-action="clear-purchase-date">Azzera data</button></div>` : ""}<span class="count" id="count" aria-live="polite"></span></div>
     <div id="results">${table(key,filtered(key))}</div></section>
     ${key === "purchases" ? '<div class="purchase-search-total" id="purchase-search-total" role="status" hidden></div>' : ""}
-    ${key === "equipment" ? '<div class="equipment-total" id="equipment-total" role="status"><span>Totale attrezzi per produzione</span><strong></strong></div>' : ""}`;
+    ${key === "equipment" ? '<div class="equipment-total" id="equipment-total" role="status"><span>Totale attrezzi per produzione</span><strong></strong><span>IVA esclusa</span></div>' : ""}`;
 }
 
 function filtered(key) {
@@ -793,17 +793,17 @@ function table(key, items, movementActions = key === "movements" && section() ==
       <span>${query ? "Prova un altro termine di ricerca." : messages[key]}</span></div>`;
   }
   const headings = {
-    articles:["Codice","Descrizione Articolo","Profumo Scentora","Unità","Costo unitario","Giacenza","Valore","Azioni","Fornitore"],
-    perfumes:["Profumo","Unità","Costo distinta","Prezzo vendita","Giacenza","Azioni"],
+    articles:["Codice","Descrizione Articolo","Profumo Scentora","Unità","Costo unitario Imponibile","Giacenza","Valore Imponibile","Azioni","Fornitore"],
+    perfumes:["Profumo","Unità","Costo distinta Imponibile","Prezzo vendita IVATO","Giacenza","Azioni"],
     movements:["Profumo","Data","Movimento","Operatore","Quantità","Note",...(movementActions ? ["Azioni"] : [])],
     customers:["Nome","Indirizzo","Città","Telefono","Contabile","Azioni"],
     suppliers:["Nome","Indirizzo","Città","Nazione","Telefono","Contabile","Azioni"],
     receipts:["Data","Cliente","Profumo","Importo","Note"],
     "ecommerce-sales":["Ordine","Data","Cliente","Pagamento","Totale ordine"],
     "ecommerce-customers":["Cliente","Email","Telefono","Ordini","Totale speso"],
-    equipment:["Data","Descrizione","Importo","Fornitore","Note","Azioni"],
+    equipment:["Data","Descrizione","Costo Imponibile","Fornitore","Note","Azioni"],
     documents:["NUM. DOC","Data acquisto","Fornitore","Totale documento"],
-    purchases:["Data","NUM. DOC","Fornitore","Articolo di base","Costo unitario","Unità di misura","Quantità","Totale","Note","Azioni"],
+    purchases:["Data","NUM. DOC","Fornitore","Articolo di base","Costo unitario Imponibile","Unità di misura","Quantità","Totale Imponibile","Note","Azioni"],
     vat_codes:["Codice IVA","Azioni"],
     units:["Unità di misura"],
     equivalents:["Codice","Equivalenza","Profumo Scentora"],
@@ -825,9 +825,9 @@ function table(key, items, movementActions = key === "movements" && section() ==
         return cell("Codice",`<span class="code">${escape(item.code)}</span>`)
           + cell("Descrizione Articolo",`<strong>${name}</strong>`)
           + cell("Profumo Scentora",escape(state.perfumes.find(perfume => perfume.id === item.scentora_perfume_id)?.name))
-          + cell("Unità",escape(unit(item.unit))) + cell("Costo unitario",unitEuro(item.cost),"numeric")
+          + cell("Unità",escape(unit(item.unit))) + cell("Costo unitario Imponibile",unitEuro(item.cost),"numeric")
           + cell("Giacenza",`<button type="button" class="button inline text-link" data-action="article-history:${item.id}" title="Storico giacenza"><span class="stock ${item.stock ? "" : "zero"}">${format(item.stock)}</span></button>`,"numeric")
-          + cell("Valore",stockMoney(stockValue(item)),"numeric")
+          + cell("Valore Imponibile",stockMoney(stockValue(item)),"numeric")
           + cell("Azioni",`<div class="article-actions">${button("Movimenta",`stock:${item.id}`,"inline")}
             <div class="article-edit-actions"><button type="button" class="button inline" data-action="article:${item.id}" title="Modifica" aria-label="Modifica articolo">Mod.</button>
               <button type="button" class="button article-delete" data-action="article:${item.id}" title="Elimina" aria-label="Elimina articolo">Elim.</button></div></div>`)
@@ -837,7 +837,7 @@ function table(key, items, movementActions = key === "movements" && section() ==
         return cell("Profumo",`<div class="perfume-name-cell">
           <button type="button" class="photo-thumbnail" data-action="perfume-photo:${item.id}" aria-label="Foto di ${name}">${perfumePhoto(item)}</button>
           <strong>${name}</strong></div>`) + cell("Unità",escape(unit(item.unit)))
-          + cell("Costo distinta",euro(cost(item.id)),"numeric") + cell("Prezzo vendita",saleMoney.format(item.price / scale),"numeric")
+          + cell("Costo distinta Imponibile",euro(cost(item.id)),"numeric") + cell("Prezzo vendita IVATO",saleMoney.format(item.price / scale),"numeric")
           + cell("Giacenza",format(item.stock),"numeric")
           + cell("Azioni",button("Carica",`produce:${item.id}`,"inline perfume-load") + button("Distinta Art.",`perfume:${item.id}`,"inline recipe-button") + " " + button("Producibilità",`production-capacity:${item.id}`,"inline secondary"),"row-actions");
       case "movements":
@@ -870,7 +870,7 @@ function table(key, items, movementActions = key === "movements" && section() ==
       }
       case "equipment":
         return cell("Data",shortDate(item.occurred_on)) + cell("Descrizione",escape(item.description))
-          + cell("Importo",saleMoney.format(item.amount / scale),"numeric") + cell("Fornitore",escape(item.contact))
+          + cell("Costo Imponibile",saleMoney.format(item.amount / scale),"numeric") + cell("Fornitore",escape(item.contact))
           + cell("Note",escape(item.notes),"notes-cell")
           + cell("Azioni",button("Modifica",`equipment:${item.id}`,"recipe-button")
             + " " + button("Elimina",`delete-equipment:${item.id}`,"article-delete"),"row-actions");
@@ -884,9 +884,9 @@ function table(key, items, movementActions = key === "movements" && section() ==
           + cell(key === "receipts" ? "Cliente" : "Fornitore",item.contact_id ? button(escape(item.contact),`ledger:${item.contact_id}`,"inline text-link") : `<strong>${escape(item.contact)}</strong>`)
           + cell(key === "receipts" ? "Profumo" : "Articolo di base",
             key === "receipts" && item.perfume_id === null ? "—" : escape(item.description))
-          + (key === "purchases" ? cell("Costo unitario",unitEuro(item.unit_cost),"numeric")
+          + (key === "purchases" ? cell("Costo unitario Imponibile",unitEuro(item.unit_cost),"numeric")
             + cell("Unità di misura",escape(item.unit)) + cell("Quantità",format(item.quantity),"numeric") : "")
-          + cell(key === "receipts" ? "Importo" : "Totale",euro(item.amount),"numeric")
+          + cell(key === "receipts" ? "Importo" : "Totale Imponibile",euro(item.amount),"numeric")
           + cell("Note",escape(item.notes),"notes-cell")
           + (key === "purchases" ? cell("Azioni",`<div class="purchase-actions">
             <button type="button" class="button recipe-button" data-action="edit-purchase:${item.id}" title="Modifica acquisto" aria-label="Modifica acquisto">M</button>
@@ -1492,11 +1492,11 @@ async function openLedger(id) {
     const out = amount => stockMoney(amount * BigInt(scale));
     const equipmentDetail = equipmentRows.length ? `<h3>Attrezzi per Produzione</h3>
       <div class="table-wrap" tabindex="0" role="region" aria-label="Attrezzi per Produzione">
-        <table><thead><tr><th scope="col">Data</th><th scope="col">Descrizione</th><th scope="col">Importo</th><th scope="col">Note</th></tr></thead>
+        <table><thead><tr><th scope="col">Data</th><th scope="col">Descrizione</th><th scope="col">Importo Imponibile</th><th scope="col">Note</th></tr></thead>
         <tbody>${equipmentRows.map(item => `<tr>${cell("Data",shortDate(item.occurred_on))}
-          ${cell("Descrizione",escape(item.description))}${cell("Importo",saleMoney.format(item.amount / scale),"numeric")}${cell("Note",escape(item.notes),"notes-cell")}</tr>`).join("")}</tbody>
-        </table></div><p>Totale attrezzi · <strong>${out(equipmentTotal)}</strong></p>` : "";
-    const totalLine = equipmentRows.length ? `<p><strong>Totale acquisti · ${out(grandTotal)}</strong></p>` : "";
+          ${cell("Descrizione",escape(item.description))}${cell("Costo Imponibile",saleMoney.format(item.amount / scale),"numeric")}${cell("Note",escape(item.notes),"notes-cell")}</tr>`).join("")}</tbody>
+        </table></div><p>Totale attrezzi Imponibile · <strong>${out(equipmentTotal)}</strong></p>` : "";
+    const totalLine = equipmentRows.length ? `<p><strong>Totale acquisti Imponibile · ${out(grandTotal)}</strong></p>` : "";
     const fullDetail = (equipmentRows.length && !movements.length ? "" : detail) + equipmentDetail + totalLine;
     content.innerHTML = fullDetail;
     const toggle = dialog.querySelector("#ledger-notes");
