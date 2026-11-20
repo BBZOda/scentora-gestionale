@@ -52,7 +52,8 @@ const saleVatRate = 0.22;
 const marginPercent = new Intl.NumberFormat("it-IT", {style:"percent", minimumFractionDigits:2, maximumFractionDigits:2});
 const saleNumber = new Intl.NumberFormat("it-IT", {useGrouping:"always", minimumFractionDigits:2, maximumFractionDigits:2});
 const format = value => number.format(value / scale);
-const euro = value => money.format(value / scale);
+const euro = value => saleMoney.format(value / scale);
+const unitEuro = value => money.format(value / scale);
 const shortDate = value => value.split("-").reverse().join("/");
 const today = new Intl.DateTimeFormat("sv-SE", {timeZone:"Europe/Rome", dateStyle:"short"});
 const usersSection = key => key === "users" || key === "archives";
@@ -274,12 +275,12 @@ function showAnalysis(selectField) {
         const item = article(line.article);
         return `<tr>${cell("Articolo",escape(item ? articleLabel(item) : "Articolo archiviato"))}
           ${cell("Quantità",escape(format(line.amount) + (item ? " " + unit(item.unit) : "")))}
-          ${cell("Costo unitario",euro(item?.cost ?? 0),"numeric")}
+          ${cell("Costo unitario",unitEuro(item?.cost ?? 0),"numeric")}
           ${cell("Costo totale",euro(lineCost(item,line.amount / scale)),"numeric")}</tr>`;
       }).join("")}
       ${[1,2,3].map(index => `<tr class="analysis-extra"><td colspan="3">
         <input aria-label="Articolo aggiuntivo ${index}" placeholder="Articolo aggiuntivo" maxlength="120"></td>
-        <td><input data-extra-cost aria-label="Costo aggiuntivo ${index} (€)" placeholder="€" inputmode="decimal" maxlength="18"></td></tr>`).join("")}
+        <td><input data-money-input data-extra-cost aria-label="Costo aggiuntivo ${index} (€)" placeholder="€" inputmode="decimal" maxlength="18"></td></tr>`).join("")}
     </tbody></table></div>
     <h2>Risultato con costi aggiuntivi</h2>
     <div id="analysis-result" aria-live="polite"></div>
@@ -682,7 +683,7 @@ function openPurchaseDocument(id) {
           `<th scope="col">${label}</th>`).join("")}</tr></thead>
           <tbody>${lines.map(item => `<tr>${cell("Articolo",escape(item.description))}
             ${cell("Quantità",format(item.quantity) + " " + escape(item.unit),"numeric")}
-            ${cell("Costo unitario",euro(item.unit_cost),"numeric")}
+            ${cell("Costo unitario",unitEuro(item.unit_cost),"numeric")}
             ${cell("Totale",euro(item.amount),"numeric")}
             ${cell("Note",escape(item.notes),"notes-cell")}</tr>`).join("")}</tbody>
           <tfoot><tr><th scope="row" colspan="3">Totale documento</th>
@@ -824,7 +825,7 @@ function table(key, items, movementActions = key === "movements" && section() ==
         return cell("Codice",`<span class="code">${escape(item.code)}</span>`)
           + cell("Descrizione Articolo",`<strong>${name}</strong>`)
           + cell("Profumo Scentora",escape(state.perfumes.find(perfume => perfume.id === item.scentora_perfume_id)?.name))
-          + cell("Unità",escape(unit(item.unit))) + cell("Costo unitario",euro(item.cost),"numeric")
+          + cell("Unità",escape(unit(item.unit))) + cell("Costo unitario",unitEuro(item.cost),"numeric")
           + cell("Giacenza",`<button type="button" class="button inline text-link" data-action="article-history:${item.id}" title="Storico giacenza"><span class="stock ${item.stock ? "" : "zero"}">${format(item.stock)}</span></button>`,"numeric")
           + cell("Valore",stockMoney(stockValue(item)),"numeric")
           + cell("Azioni",`<div class="article-actions">${button("Movimenta",`stock:${item.id}`,"inline")}
@@ -883,7 +884,7 @@ function table(key, items, movementActions = key === "movements" && section() ==
           + cell(key === "receipts" ? "Cliente" : "Fornitore",item.contact_id ? button(escape(item.contact),`ledger:${item.contact_id}`,"inline text-link") : `<strong>${escape(item.contact)}</strong>`)
           + cell(key === "receipts" ? "Profumo" : "Articolo di base",
             key === "receipts" && item.perfume_id === null ? "—" : escape(item.description))
-          + (key === "purchases" ? cell("Costo unitario",euro(item.unit_cost),"numeric")
+          + (key === "purchases" ? cell("Costo unitario",unitEuro(item.unit_cost),"numeric")
             + cell("Unità di misura",escape(item.unit)) + cell("Quantità",format(item.quantity),"numeric") : "")
           + cell(key === "receipts" ? "Importo" : "Totale",euro(item.amount),"numeric")
           + cell("Note",escape(item.notes),"notes-cell")
@@ -908,7 +909,17 @@ function table(key, items, movementActions = key === "movements" && section() ==
 
 const options = (items,id,label = item => item.name) => '<option value="">Seleziona…</option>' +
   items.map(item => `<option value="${item.id}" ${item.id === id ? "selected" : ""}>${escape(label(item))}</option>`).join("");
-const input = (label,name,value = "",attrs = "required") => `<label>${label}<input name="${name}" value="${escape(value)}" ${attrs}></label>`;
+const moneyInputValue = value => {
+  if (value == null || String(value).trim() === "") return "";
+  const normalized = String(value).trim().replace(",", ".");
+  if (!/^\d+(?:\.\d{0,6})?$/.test(normalized)) return value;
+  const [whole,fraction = ""] = normalized.split(".");
+  return whole + "," + fraction.padEnd(2,"0");
+};
+const input = (label,name,value = "",attrs = "required") => {
+  const monetary = label.includes("(€)") && name !== "price";
+  return `<label>${label}<input name="${name}" value="${escape(monetary ? moneyInputValue(value) : value)}" ${monetary ? 'data-money-input' : ""} ${attrs}></label>`;
+};
 const numericInput = (label,name,value,required = true) => input(label,name,value == null ? "" : value / scale,`inputmode="decimal" maxlength="22" ${required ? "required" : ""}`);
 const vatFields = item => {
   const rate = item?.vat_rate ?? 0;
@@ -925,7 +936,7 @@ const selected = (a,b) => a === b ? "selected" : "";
 function equipmentLine() {
   return `<tr>
     <td><input name="description" aria-label="Descrizione" maxlength="200" required></td>
-    <td><input name="amount" aria-label="Importo (€)" inputmode="decimal" maxlength="22" required></td>
+    <td><input data-money-input name="amount" aria-label="Importo (€)" inputmode="decimal" maxlength="22" required></td>
     <td><input name="notes" aria-label="Note" maxlength="1000"></td>
     <td><button type="button" class="icon-button" data-action="remove-equipment-line" aria-label="Rimuovi riga">${icon("close")}</button></td>
   </tr>`;
@@ -1313,7 +1324,7 @@ function updatePreview() {
       cost = /^\d+(?:[.,]\d{1,6})?$/.test(costField.value.trim()) && value <= 1e9 * scale
         ? Math.round(value) : undefined;
     } else {
-      purchase.elements.display_cost.value = cost == null ? "" : euro(cost);
+      purchase.elements.display_cost.value = cost == null ? "" : unitEuro(cost);
     }
     purchase.elements.display_unit.value = sameArticle ? original.unit : item ? unit(item.unit) : "";
     const preview = purchase.querySelector("#purchase-total");
@@ -1333,7 +1344,7 @@ function updatePreview() {
   const perfumeName = dialog.querySelector('input[name="profumo"]')?.value ?? "";
   dialog.querySelectorAll(".recipe-line").forEach(line => {
     const item = article(Number(line.querySelector("select").value));
-    line.querySelector(".line-meta").textContent = item ? `${unit(item.unit)} · ${euro(item.cost)} per unità · ${format(item.stock)} disponibili` : "";
+    line.querySelector(".line-meta").textContent = item ? `${unit(item.unit)} · ${unitEuro(item.cost)} per unità · ${format(item.stock)} disponibili` : "";
     const warning = line.querySelector(".form-error");
     const message = recipeEquivalenceWarning(item,perfumeName);
     warning.hidden = !message;
@@ -1376,6 +1387,11 @@ function parseSalePrice(text) {
 
 document.addEventListener("focusout", event => {
   const field = event.target;
+  if (field.matches("[data-money-input]")) {
+    field.value = moneyInputValue(field.value);
+    if (dialog.contains(field)) updatePreview();
+    return;
+  }
   if (!field.matches('form[data-form="perfume"] input[name="price"]')) return;
   const value = parseSalePrice(field.value);
   if (value !== null) {
@@ -1717,7 +1733,7 @@ document.addEventListener("change", event => {
     row.querySelector("[data-purchase-code]").textContent = item?.code ?? "";
     row.querySelector("[data-purchase-perfume]").textContent = perfume?.name ?? "";
     row.querySelector("[data-purchase-unit]").textContent = item ? unit(item.unit) : "";
-    row.querySelector("[data-purchase-cost]").textContent = item ? euro(item.cost) : "";
+    row.querySelector("[data-purchase-cost]").textContent = item ? unitEuro(item.cost) : "";
   }
   if (!event.target.matches('#recipe-copy-picker select[name="recipeSource"]')) return;
   const lines = recipe(Number(event.target.value));
