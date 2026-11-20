@@ -16,6 +16,7 @@ const sections = {
   "ecommerce-customers": ["Clienti E-commerce", "users"],
   purchases: ["Acquisto Articoli", "wallet"],
   units: ["Elenchi", "list"],
+  vat_codes: ["Codici IVA", "list"],
   equivalents: ["Tabella Equivalenze", "list"],
   documents: ["Documenti acquisto", "list"],
   equipment: ["Attrezzi per Produzione", "box"],
@@ -128,10 +129,10 @@ function renderLogin() {
 
 function render() {
   const current = section();
-  const links = Object.entries(sections).filter(([key]) => key !== "purchases" && key !== "equivalents" && key !== "documents" && key !== "equipment" && key !== "archives" && (!usersSection(key) || state.user.role === "admin"))
+  const links = Object.entries(sections).filter(([key]) => key !== "vat_codes" && key !== "purchases" && key !== "equivalents" && key !== "documents" && key !== "equipment" && key !== "archives" && (!usersSection(key) || state.user.role === "admin"))
     .map(([key,[label,symbol]]) => {
       const accounting = key === "receipts";
-      const active = current === key || (accounting && accountingSection(current)) || (key === "units" && ["equivalents","documents","equipment"].includes(current)) || (key === "users" && current === "archives");
+      const active = current === key || (accounting && accountingSection(current)) || (key === "units" && ["vat_codes","equivalents","documents","equipment"].includes(current)) || (key === "users" && current === "archives");
       const link = `<a href="#${accounting ? "accounting" : key}" ${active ? 'aria-current="page"' : ""}>${icon(symbol)}${accounting ? "Acquisti-Incassi" : key === "users" ? "Utenti e Archivi" : label}</a>`;
       if (key === "ecommerce-sales") return `<div class="ecommerce-nav-group" role="group" aria-label="E-commerce">${link}`;
       if (key === "ecommerce-customers") return `${link}</div>`;
@@ -191,6 +192,7 @@ const settings = {
   equipment: ["Consulta gli attrezzi per la produzione.", "Nuovo attrezzo", "equipment", "Cerca per descrizione, fornitore o note"],
   documents: ["Documenti registrati negli acquisti, con data e fornitore.", "", "", "Cerca per numero documento o fornitore"],
   equivalents: ["Corrispondenze tra codici, equivalenze e profumi Scentora.", "", "", "Cerca per codice, equivalenza o profumo"],
+  vat_codes: ["Gestisci le aliquote IVA disponibili nelle schede.", "Nuovo codice IVA", "vat-code", "Cerca un codice IVA"],
   units: ["Unità di misura disponibili nelle schede.", "Nuova unità", "unit", "Cerca un’unità"],
   users: ["Gestisci gli account e i ruoli di accesso.", "Nuovo utente", "user", "Cerca un utente"],
 };
@@ -734,7 +736,7 @@ function openStockValue() {
 
 function listing(key) {
   const [description,label,action,placeholder] = settings[key];
-  const canCreate = !["equivalents","documents","ecommerce-sales","ecommerce-customers"].includes(key) && (key !== "units" || state.user.role === "admin");
+  const canCreate = !["equivalents","documents","ecommerce-sales","ecommerce-customers"].includes(key) && (!["units","vat_codes"].includes(key) || state.user.role === "admin");
   return `<div class="page-heading${key === "movements" ? " production-heading" : ""}"><div><h1>${sections[key][0]}</h1><p>${description}</p></div>
     ${key === "movements" ? `<div class="actions production-actions">
       ${button("Carica Profumo","produce","perfume-load","plus")}
@@ -748,8 +750,9 @@ function listing(key) {
     ${key === "users" ? usersTabs(key) : ""}
     ${accountingSection(key) ? `<nav class="accounting-nav" aria-label="Gestione Contabilità">${["purchases","receipts"].map(tab =>
       `<a href="#${tab}" ${tab === key ? 'aria-current="page"' : ""}>${tab === "receipts" ? "Incasso/Apporto Socio" : sections[tab][0]}</a>`).join("")}</nav>` : ""}
-    ${["units","equivalents","documents","equipment"].includes(key) ? `<nav class="accounting-nav" aria-label="Elenchi">
+    ${["units","vat_codes","equivalents","documents","equipment"].includes(key) ? `<nav class="accounting-nav" aria-label="Elenchi">
       <a href="#units" ${key === "units" ? 'aria-current="page"' : ""}>Unità di misura</a>
+      <a href="#vat_codes" ${key === "vat_codes" ? 'aria-current="page"' : ""}>Codici IVA</a>
       <a href="#equivalents" ${key === "equivalents" ? 'aria-current="page"' : ""}>Tabella Equivalenze</a>
       <a href="#documents" ${key === "documents" ? 'aria-current="page"' : ""}>Documenti acquisto</a>
       <a href="#equipment" ${key === "equipment" ? 'aria-current="page"' : ""}>Attrezzi per Produzione</a>
@@ -802,6 +805,7 @@ function table(key, items, movementActions = key === "movements" && section() ==
     equipment:["Data","Descrizione","Importo","Fornitore","Note","Azioni"],
     documents:["NUM. DOC","Data acquisto","Fornitore","Totale documento"],
     purchases:["Data","NUM. DOC","Fornitore","Articolo di base","Costo unitario","Unità di misura","Quantità","Totale","Note","Azioni"],
+    vat_codes:["Codice IVA","Azioni"],
     units:["Unità di misura"],
     equivalents:["Codice","Equivalenza","Profumo Scentora"],
     users:["Utente","Ruolo","Stato","Azioni"],
@@ -846,6 +850,8 @@ function table(key, items, movementActions = key === "movements" && section() ==
           + (movementActions ? cell("Azioni",`<div class="purchase-actions">${button("Modifica",`edit-movement:${item.id}`,"recipe-button")}${button("Elimina",`confirm-movement:${item.id}`,"article-delete")}</div>`,"row-actions") : "");
       case "equivalents":
         return cell("Codice",escape(item.code)) + cell("Equivalenza",escape(item.description)) + cell("Profumo Scentora",name);
+      case "vat_codes":
+        return cell("Codice IVA",`<strong>${escape(item.name)}</strong>`) + cell("Azioni",state.user.role === "admin" ? button("Modifica",`vat-code:${item.id}`,"inline") + button("Elimina",`delete-vat-code:${item.id}`,"inline") : "—");
       case "units":
         return cell("Unità di misura",`<strong>${name}</strong>`);
       case "customers":
@@ -906,7 +912,13 @@ const options = (items,id,label = item => item.name) => '<option value="">Selezi
   items.map(item => `<option value="${item.id}" ${item.id === id ? "selected" : ""}>${escape(label(item))}</option>`).join("");
 const input = (label,name,value = "",attrs = "required") => `<label>${label}<input name="${name}" value="${escape(value)}" ${attrs}></label>`;
 const numericInput = (label,name,value,required = true) => input(label,name,value == null ? "" : value / scale,`inputmode="decimal" maxlength="22" ${required ? "required" : ""}`);
-const vatFields = item => input("IVA (%)","vat_rate",(item?.vat_rate ?? 0) / 100,'inputmode="decimal" required') + input("Importo Ivato (€)","gross_amount","",'readonly aria-live="polite"');
+const vatFields = item => {
+  const rate = item?.vat_rate ?? 0;
+  const codes = [...(state.vat_codes ?? [])];
+  if (!codes.some(code => code.rate === rate) && item) codes.push({rate,name:`${rate / 100}% (salvata)`});
+  const choices = '<option value="">Seleziona…</option>' + codes.map(code => `<option value="${code.rate / 100}" ${code.rate === rate ? "selected" : ""}>${escape(code.name)}</option>`).join("");
+  return select("IVA (%)","vat_rate",choices) + input("Importo Ivato (€)","gross_amount","",'readonly aria-live="polite"');
+};
 const select = (label,name,choices,required = true) =>
   `<label>${label}<select name="${name}" ${required ? "required" : ""}>${choices}</select></label>`;
 const units = id => select("Unità di misura","unit",options(state.units,id));
@@ -957,12 +969,23 @@ function perfumeNavigation(id) {
 
 function modal(action,id,keepEquivalences = false) {
   const item = id ? ({
+    "vat-code":state.vat_codes, "delete-vat-code":state.vat_codes,
     equipment:state.equipment, "delete-equipment":state.equipment,
     article:state.articles, stock:state.articles, perfume:state.perfumes,
     produce:state.perfumes, user:state.users, customer:state.customers, supplier:state.suppliers,
   }[action] || []).find(record => record.id === id) : undefined;
   let title, fields, label = "Salva";
   switch (action) {
+    case "vat-code":
+      title = item ? "Modifica codice IVA" : "Nuovo codice IVA";
+      fields = input("Aliquota IVA (%)","vat_rate",item ? item.rate / 100 : "",'inputmode="decimal" required');
+      break;
+    case "delete-vat-code":
+      if (!item) return;
+      title = "Eliminare il codice IVA?";
+      fields = `<p>Confermi l’eliminazione del codice <strong>${escape(item.name)}</strong> dall’elenco?</p><p>Le aliquote già salvate nelle schede restano invariate.</p>`;
+      label = "Elimina";
+      break;
     case "article":
       title = item ? "Modifica articolo" : "Nuovo articolo di base";
       fields = `<div class="form-grid">${input("Codice","codice",item?.code,'maxlength="40"')}
@@ -1683,6 +1706,7 @@ function updateCount() {
   }
 }
 document.addEventListener("change", event => {
+  if (event.target.name === "vat_rate" && dialog.contains(event.target)) updatePreview();
   if (event.target.matches(".perfume-photo-input") && event.target.files[0]) {
     void updatePerfumePhoto(event.target.closest("[data-photo-editor]"),event.target.files[0]);
     return;

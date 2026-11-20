@@ -24,7 +24,7 @@ DEMO = os.getenv("SCENTORA_DEMO") == "1"
 DB = os.getenv("SCENTORA_DB", str(ROOT / "scentora.sqlite"))
 SESSION_SECONDS = 12 * 3600
 PASSWORD_MIN = 5
-SCHEMA_VERSION = 21
+SCHEMA_VERSION = 22
 SCALE = 1_000_000
 CENT = SCALE // 100
 MAX_VALUE = 1_000_000_000 * SCALE
@@ -241,6 +241,11 @@ def migrate_schema(db):
         db.execute("ALTER TABLE articles ADD COLUMN vat_rate INTEGER NOT NULL DEFAULT 0 CHECK(vat_rate BETWEEN 0 AND 10000)")
         db.execute("ALTER TABLE equipment ADD COLUMN vat_rate INTEGER NOT NULL DEFAULT 0 CHECK(vat_rate BETWEEN 0 AND 10000)")
         db.execute("UPDATE contact_movements SET description='Apporto Soci' WHERE description='Incasso generico' AND contact_id IN (SELECT id FROM contacts WHERE kind='customer')")
+    if version < 22:
+        db.execute("CREATE TABLE vat_codes (id INTEGER PRIMARY KEY, rate INTEGER NOT NULL CHECK(rate BETWEEN 0 AND 10000), archived INTEGER NOT NULL DEFAULT 0)")
+        db.execute("CREATE UNIQUE INDEX vat_codes_active_rate ON vat_codes(rate) WHERE archived=0")
+        db.execute("INSERT INTO vat_codes(rate) VALUES (2200),(0)")
+        db.execute("INSERT INTO vat_codes(rate) SELECT vat_rate FROM articles UNION SELECT vat_rate FROM equipment EXCEPT SELECT rate FROM vat_codes")
     db.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
 
@@ -371,6 +376,7 @@ def state(db, user):
         "demo": DEMO,
         "articles": rows(db, "SELECT * FROM articles WHERE archived=0 ORDER BY name COLLATE NOCASE"),
         "equivalents": EQUIVALENCES,
+        "vat_codes": rows(db, "SELECT id,rate,printf('%g%%',rate/100.0) AS name FROM vat_codes WHERE archived=0 ORDER BY rate DESC"),
         "units": rows(db, "SELECT * FROM units ORDER BY name COLLATE NOCASE"),
         "perfumes": rows(db, "SELECT p.*,EXISTS(SELECT 1 FROM perfume_photos f WHERE f.perfume_id=p.id) AS has_photo FROM perfumes p ORDER BY p.name COLLATE NOCASE"),
         "recipes": rows(db, "SELECT * FROM recipes ORDER BY perfume,article"),
@@ -422,7 +428,7 @@ def save_article(db, data):
     fields = {
         "code": code, "name": field(data, "descrizione"),
         "unit": unit, "cost": amount(data.get("cost") or 0), "stock": stock,
-        **({"vat_rate": vat_rate(data)} if "vat_rate" in data else {}),
+        **({"vat_rate": selected_vat_rate(db, data, "articles")} if "vat_rate" in data else {}),
     }
     if "notes" in data:
         notes = data["notes"]
@@ -636,6 +642,27 @@ def save_contact(db, data):
     replace_record(db, "contacts", contact_id, fields)
 
 
+def selected_vat_rate(db, data, table):
+    rate = vat_rate(data)
+    if db.execute("SELECT 1 FROM vat_codes WHERE rate=? AND archived=0", (rate,)).fetchone():
+        return rate
+    if data.get("id") is not None:
+        previous = get_row(db, f"SELECT vat_rate FROM {table} WHERE id=?", (integer(data["id"]),))
+        if previous["vat_rate"] == rate:
+            return rate
+    raise Problem("Seleziona un codice IVA presente nell’elenco.")
+
+
+def save_vat_code(db, data):
+    record_id = data.get("id")
+    if record_id is not None:
+        get_row(db, "SELECT id FROM vat_codes WHERE id=? AND archived=0", (integer(record_id),))
+    rate = vat_rate(data)
+    if db.execute("SELECT 1 FROM vat_codes WHERE rate=? AND archived=0 AND id!=?", (rate, record_id or 0)).fetchone():
+        raise Problem("Questo codice IVA è già presente.")
+    replace_record(db, "vat_codes", record_id, {"rate": rate})
+
+
 def vat_rate(data):
     value = amount(data.get("vat_rate") or 0)
     if value > 100 * SCALE or value % (SCALE // 100):
@@ -659,7 +686,7 @@ def save_equipment(db, data):
     replace_record(db, "equipment", record_id, {
         "occurred_on": movement_date(data.get("data")), "description": field(data, "description", 200),
         "amount": price, "supplier_id": supplier_id, "notes": notes.strip(),
-        **({"vat_rate": vat_rate(data)} if "vat_rate" in data else {}),
+        **({"vat_rate": selected_vat_rate(db, data, "equipment")} if "vat_rate" in data else {}),
     })
 
 
@@ -1121,6 +1148,15 @@ def api(env, path, method):
             save_equipment(db, data)
         elif action == "delete-equipment":
             db.execute("DELETE FROM equipment WHERE id=?", (integer(data.get("id")),))
+        elif action in {"vat-code", "delete-vat-code"}:
+            if user["role"] != "admin":
+                raise Problem("Operazione riservata agli amministratori.", "403 Forbidden")
+            if action == "vat-code":
+                save_vat_code(db, data)
+            else:
+                record_id = integer(data.get("id"))
+                get_row(db, "SELECT id FROM vat_codes WHERE id=? AND archived=0", (record_id,))
+                db.execute("UPDATE vat_codes SET archived=1 WHERE id=?", (record_id,))
         elif action == "unit":
             if user["role"] != "admin":
                 raise Problem("Operazione riservata agli amministratori.", "403 Forbidden")
