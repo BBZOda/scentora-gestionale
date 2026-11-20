@@ -132,7 +132,10 @@ function render() {
     .map(([key,[label,symbol]]) => {
       const accounting = key === "receipts";
       const active = current === key || (accounting && accountingSection(current)) || (key === "units" && ["equivalents","documents","equipment"].includes(current)) || (key === "users" && current === "archives");
-      return `<a href="#${accounting ? "accounting" : key}" ${accounting || key === "ecommerce-sales" ? 'class="highlight-nav"' : ""} ${active ? 'aria-current="page"' : ""}>${icon(symbol)}${accounting ? "Acquisti-Incassi" : key === "users" ? "Utenti e Archivi" : label}</a>`;
+      const link = `<a href="#${accounting ? "accounting" : key}" ${active ? 'aria-current="page"' : ""}>${icon(symbol)}${accounting ? "Acquisti-Incassi" : key === "users" ? "Utenti e Archivi" : label}</a>`;
+      if (key === "ecommerce-sales") return `<div class="ecommerce-nav-group" role="group" aria-label="E-commerce">${link}`;
+      if (key === "ecommerce-customers") return `${link}</div>`;
+      return link;
     }).join("");
   root.innerHTML = `<div class="shell">
     <aside id="sidebar" class="sidebar ${navOpen ? "open" : ""}">${brand}
