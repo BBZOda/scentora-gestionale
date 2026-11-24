@@ -165,7 +165,7 @@ function dashboard() {
     ["Profumi a catalogo", state.perfumes.length, "perfumes", "bottle"],
     ["Movimenti registrati", state.movements.length >= 100 ? "100+" : state.movements.length, "movements", "clock"]];
   return `<section class="hero">
-      <div class="hero-art" aria-hidden="true"><i></i><i></i><i></i>${mark}</div>
+      <div class="hero-logo"><img src="/scentora-logo.png" alt="Scentora · Profumi che ispirano" width="605" height="204"></div>
       <div class="hero-content"><p class="eyebrow">SCENTORA / PRODUZIONE</p><h1>Panoramica</h1>
       <p>Giacenze, distinte base e carichi di produzione.</p>
       </div>

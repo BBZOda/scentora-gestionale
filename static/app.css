@@ -523,3 +523,12 @@ table[aria-label="Acquisto Articoli"] th { overflow-wrap: normal; }
 .brand-logo img { display: block; width: 100%; height: auto; }
 .brand-logo > small { color: #563b31; font-size: 9px; font-weight: 600; letter-spacing: .1em; text-align: center; }
 .login-card .brand-logo { padding: 22px 16px 15px; }
+
+/* Definitive logo in the overview banner. */
+.hero-logo { position: absolute; right: clamp(16px,7%,105px); top: 28px; width: min(30%,310px); padding: 20px 16px; background: #f8f3eb; border-radius: 12px; }
+.hero-logo img { display: block; width: 100%; height: auto; }
+@media (max-width: 760px) {
+  .hero:has(.hero-logo) { display: flex; flex-direction: column; align-items: flex-start; gap: 20px; }
+  .hero-logo { position: static; order: 1; width: min(100%,280px); box-sizing: border-box; }
+  .hero:has(.hero-logo) .hero-site-link { position: static; order: 2; margin-top: 0; }
+}
