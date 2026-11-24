@@ -78,7 +78,7 @@ const recipe = id => state.recipes.filter(line => line.perfume === id);
 const lineCost = (item,quantity) => (item?.cost ?? 0) * quantity;
 const cost = id => recipe(id).reduce((total,line) => total + lineCost(article(line.article),line.amount / scale), 0);
 const button = (label, action, type = "secondary", symbol = "") => `<button type="button" class="button ${type}" data-action="${action}">${symbol ? icon(symbol) : ""}${label}</button>`;
-const brand = `<a class="brand" href="#dashboard">${mark}<span>SCENTORA<small>GESTIONALE DI PRODUZIONE</small></span></a>`;
+const brand = `<a class="brand brand-logo" href="#dashboard" aria-label="Scentora · Gestionale di produzione"><img src="/scentora-logo.png" alt="Scentora · Profumi che ispirano" width="605" height="204"><small>GESTIONALE DI PRODUZIONE</small></a>`;
 
 async function request(path, data) {
   let response;

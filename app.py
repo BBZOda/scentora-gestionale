@@ -29,7 +29,8 @@ SCALE = 1_000_000
 CENT = SCALE // 100
 MAX_VALUE = 1_000_000_000 * SCALE
 ASSETS = {"/": ("index.html", "text/html"), "/app.css": ("app.css", "text/css"),
-          "/app.js": ("app.js", "text/javascript")}
+          "/app.js": ("app.js", "text/javascript"),
+          "/scentora-logo.png": ("scentora-logo.png", "image/png")}
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS units (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE COLLATE NOCASE);
